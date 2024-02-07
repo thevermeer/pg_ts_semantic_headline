@@ -50,4 +50,6 @@ Do not underestimate the <b>power of the pen</b> in changing the world.
 ```
 
 ### 3. How can I use ts_headline to return the exact phrase matches from a lexeme-reduced TSVector
-I am
+When a full-text search engine ingests and indexes text, typically the content is processed, word-by-word, against a language-specific dictionary, reduced to its lexeme (word root), and stored alphabetically in an inverted index with their position in the text; common connctive words (the, and, am, do as examples) are removed and not indexed.
+
+In pre-realizing the TSVector in pgsql, when we perform search by similarly reducing the search term to its lexemes (as with the haystack, so too with the needle), we are losing the information of the exact terms within the source text that are matching the user query. Can we use ts_headline to retrieve the exact strings that are being matched in the lexeme-reduced index lookup?
