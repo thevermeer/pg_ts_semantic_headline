@@ -17,12 +17,58 @@ For multi-word search terms, ts_headline is treating a multi-word phrase like `s
 SELECT ts_headline('liberally apply shampoo to scalp', to_tsquery('liberally<->applied<->semantics'));
 
 ::>
-ts_headline
+ ts_headline
+--------------
 <b>liberally</b> apply shampoo to scalp
 ```
 The partial highlighting may seem trivial at this first stage, however, when applied to large documents, and the `MaxFragments` option for ts_headline is greater than zero (See [[pgsql Full-text search - 12.3.4 Highlighting Results](https://www.postgresql.org/docs/current/textsearch-controls.html#TEXTSEARCH-HEADLINE)]) we can easily end up with somne partial matches, and we do not want those displayed.
 
-### 2. ts_headline only highlights single words for multi-word phrase queries.
+### 2. How can I determine the max length of a single phrase within a search term of multiple, logically-connected phrases
+As a user, I want to query a logical connection of multiple phrases. For instance `needle<->in<->the<->haystack | hidden<->treasure`.
+
+For the purposes of ts_headline, we want to limit the size of the highlighted passages to grow with the size of the user inputted query, however we need to determine the maximum phrase length contained within a logical search term. The PGSQL builtin function `numnode` [[pgsql Full-text search - 12.4.2. Manipulating Queries](https://www.postgresql.org/docs/16/textsearch-features.html#TEXTSEARCH-MANIPULATE-TSQUERY)] will count the total number words but will pay no mind to boolean operators; as such, the value that numnode returns is larger, and non-representative of the number of words in the longest phrase in the query:
+
+```
+SELECT numnode(to_tsquery('needle<->in<->the<->haystack|hidden<->treasure'))
+
+::>
+ numnode 
+---------
+       7
+(1 row)
+```
+In looking at the search term `needle<->in<->the<->haystack | hidden<->treasure`, we can see that there is a phrase of 4 words and a phrase of 2 words, and we want to return the maximum value (4). 
+
+A solution to this issue will allow us to better control the output of ts_headline and smooth out some of our logic going forward.
+
+### 3. How can I use ts_headline to return the exact phrase matches from a lexeme-reduced TSVector
+When a full-text search engine ingests and indexes text, typically the content is processed, word-by-word, against a language-specific dictionary, reduced to its lexeme (word root), and stored alphabetically in an inverted index with their position in the text; common connctive words (the, and, am, do as examples) are removed and not indexed.
+
+In pre-realizing the TSVector in pgsql, when we perform search by similarly reducing the search term to its lexemes (as with the haystack, so too with the needle), we are losing the information of the exact terms within the source text that are matching the user query. 
+
+#### Example: TSVector lexeme reduction loses the exact content matched
+```
+SELECT to_tsvector('exacting exactly the exact exaction that exacts the exacted');
+
+     to_tsvector     
+---------------------
+ 'exact':1,2,4,5,7,9
+(1 row)
+```
+
+Can we use ts_headline to retrieve the exact strings that are being matched in the lexeme-reduced index lookup?
+
+That is:
+```
+SELECT SOME_FUNCTION('exacting exactly the exact exaction that exacts the exacted', ts_tsquery('exact'));
+
+::>
+ SOME_FUNCTION
+---------------
+exacting, exactly, exact, exaction, exacts, exacted
+```
+
+### 4. ts_headline only highlights single words for multi-word phrase queries.
 For multi-word search terms, only the single words that comprise the search term are highlighted. Combining this with the first issue (ts_headline returns passages that do NOT contain the searched phrase), we will display highlights that do not fully demonstrate the phrase semantics of search applied. For instance:
 ```
 SELECT ts_headline('search is separate from term and then combined in a search term', 
@@ -48,8 +94,3 @@ However, we want the entire phrase highlighted and wrapped in a single tag, like
 ```
 Do not underestimate the <b>power of the pen</b> in changing the world.
 ```
-
-### 3. How can I use ts_headline to return the exact phrase matches from a lexeme-reduced TSVector
-When a full-text search engine ingests and indexes text, typically the content is processed, word-by-word, against a language-specific dictionary, reduced to its lexeme (word root), and stored alphabetically in an inverted index with their position in the text; common connctive words (the, and, am, do as examples) are removed and not indexed.
-
-In pre-realizing the TSVector in pgsql, when we perform search by similarly reducing the search term to its lexemes (as with the haystack, so too with the needle), we are losing the information of the exact terms within the source text that are matching the user query. Can we use ts_headline to retrieve the exact strings that are being matched in the lexeme-reduced index lookup?
