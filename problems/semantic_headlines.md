@@ -30,6 +30,7 @@ FROM (SELECT regexp_split_to_table(ts_headline('quick brown fox box and fox', 'f
                                    E'<passage>') AS text) AS passages
 			WHERE TO_TSVECTOR(passages.text) @@ 'fox<1>box'::TSQUERY;
 ```
+Above, the `WHERE TO_TSVECTOR(passages.text) @@ 'fox<1>box'::TSQUERY` is taking the passage returned from `ts_headline`, casting that text into a TSVector and then testing with `@@` against the TSQuery. 
 
 ### Function to return value from option string (Comma-Delimited list of key=value)
 As a sidenote, in the approach above, we are using the `<passage>` tag as the `FragmentDelimiter` (See [[pgsql Full-text search - 12.3.4. Highlighting Results](https://www.postgresql.org/docs/current/textsearch-controls.html#TEXTSEARCH-HEADLINE)]). This is opinionated and should be overloaded if the user speficies a different `FragmentDelimiter`. As such, we should take some care in preserving the user-specified value, and to do that we need a simple funciton to return a value from a k/v pair in a comma-delimited list:
@@ -48,3 +49,31 @@ LANGUAGE plpgsql;
 This function assumes a string of 0 or more options entries in the form `key1=value1, key2=value2`.
 
 ### ts_headline function that only returns matching passages
+Combining these two approaches, we can derive a function that returns only passages which conform to the TS Query.
+```
+CREATE OR REPLACE FUNCTION conforming_headline (content TEXT, query TSQUERY, options TEXT) RETURNS TEXT
+AS $$
+DECLARE base_params TEXT;
+DECLARE delimiter TEXT;
+BEGIN
+    SELECT options || ',FragmentDelimiter=<passage>' INTO base_params;
+    SELECT COALESCE(cdl_kv_to_value(options, 'FragmentDelimiter'), '<passage>') INTO delimiter;
+
+    RETURN (SELECT string_agg(passages.text, delimiter) 
+            FROM (SELECT regexp_split_to_table(ts_headline(content, query, base_params), E'<passage>') AS text) AS passages
+			WHERE TO_TSVECTOR(passages.text) @@ query);
+END;
+$$
+IMMUTABLE
+LANGUAGE plpgsql;
+```
+## Real-World problems with this approach
+This pattern and approach suffers from 3 main issues:
+1) While this guarantees that ts_headline returns a conforming passage, it does not prevent ts_headline from highlighting partial terms which do NOT match the TS Query.  See
+- [[BUG #15172: Postgresql ts_headline with <-> operator does not highlight text properly](https://www.postgresql.org/message-id/flat/152461454026.19805.6310947081647212894%40wrigleys.postgresql.org)]
+- [[SO: Is `ts_headline` intended to highlight non-matching parts of the query (which it does)?](https://stackoverflow.com/questions/69512416/is-ts-headline-intended-to-highlight-non-matching-parts-of-the-query-which-it)]
+- and many more...
+
+2) This approach to generating headlines is not capable of highlighting phrases, rather only single words within a phrase.
+
+3) `ts_headline` is very slow. Taking the results of a `ts_headline` call and then casting it to a TSVector is even slower.  
