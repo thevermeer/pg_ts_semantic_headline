@@ -1,96 +1,61 @@
-# PostgreSQL Full-text Search and Semantic ts_headline functionality
-The purpose of this repository is to document some issues encountered with using PostgreSQL full-text search to display highlighted search results to the user, and propose a solution that is expressed firstly as PGSQL user-defined functions (UDFs). The goal of creating this functionality is to demonstrate the value to the PostgreSQL community of correcting the ts_headline function to better reflect the actual semantics of the full-text search operators used for index lookup. From that, the goal is to introduce better ts_headline semantics into the postgresql source code. To get there, let's first outline the current issues and create a few UDFs to address the issue and illuminate the value of the improvements.
+# Setup 
 
-## Preamble
-I am a full-stack developer, building a web application that has stored a large volume of texts, as rows in a postgreSQL data table. The UI we are building performs full-text search by accepting a user-inputted string, searching, and displaying results. When we display results, we want to display passages from the text with "highlights", emphasizing the portions of the passage that match our search.
+We are going to create a data table with a volume of text in it with which to test some of our extended funcitons on ts_headline.
 
-The user has at their disposal the ability to search a single word or a multi-word phrase; they can join phrases together with AND/OR operators, group logical expressions with brackets and negate the presence of certain words with NOT. [[pgsql Full-text search - 12.1.2 matching](https://www.postgresql.org/docs/current/textsearch-intro.html#TEXTSEARCH-MATCHING)]
+To do that we will create a table that contains an ID field, a content TEXT column to store the actual textual content, and content_tsv column that will store the pre-computed TSVector representation of the content column.
 
-In the database, we have created a table to store the text contents of a large volume of files. For each tuple in the "files" table, we have a file ID, a text field, and a TS Vector column that is a pre-realized, because adhoc realization of TSVector of a large table of text is very memory-(and time-)intensive, and likewise such that we can create a GIN index of the TSVector column for fast lookup. This is a recommended pattern for large-scale full-text search in PostgreSQL. [[pgsql Full-text Search - 12.2.2 Creating Indexes](https://www.postgresql.org/docs/current/textsearch-tables.html#TEXTSEARCH-TABLES-INDEX)]
-
-## Problems with ts_headline
-As a developer, the built-in ts_headline offers a number of quirks and gotchas, and at the highest level, it is fair to say that the internals to ts_headline do not abide by the intended meaning of full-text operators. Specifically when the user has inputted a multi-word phrase, we find that ts_headline will return only partial matches, and only highlight single words from the phrase.
-
-### 1. ts_headline returns passages that do NOT contain the searched phrase
-For multi-word search terms, ts_headline is treating a multi-word phrase like `subject of interest` as three, indepentent terms: `subject`, `of` and `interest`. As a result, the ts_headline function will return passages from the source that only contain partial matches. If the user is presented with a passage that only demonstrates a partial match, we will have broken user expectations:
-``` 
-SELECT ts_headline('liberally apply shampoo to scalp', to_tsquery('liberally<->applied<->semantics'));
-
-::>
- ts_headline
---------------
-<b>liberally</b> apply shampoo to scalp
+## Create the files table
+Let's first create our table and add an index on the primary key :
 ```
-The partial highlighting may seem trivial at this first stage, however, when applied to large documents, and the `MaxFragments` option for ts_headline is greater than zero (See [[pgsql Full-text search - 12.3.4 Highlighting Results](https://www.postgresql.org/docs/current/textsearch-controls.html#TEXTSEARCH-HEADLINE)]) we can easily end up with somne partial matches, and we do not want those displayed.
+-- Table Definition ----------------------------------------------
 
-### 2. How can I determine the max length of a single phrase within a search term of multiple, logically-connected phrases
-As a user, I want to query a logical connection of multiple phrases. For instance `needle<->in<->the<->haystack | hidden<->treasure`.
+CREATE TABLE files (
+    id integer GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+    content text,
+    content_tsv tsvector,
+    CONSTRAINT files_id_not_null 
+);
 
-For the purposes of ts_headline, we want to limit the size of the highlighted passages to grow with the size of the user inputted query, however we need to determine the maximum phrase length contained within a logical search term. The PGSQL builtin function `numnode` [[pgsql Full-text search - 12.4.2. Manipulating Queries](https://www.postgresql.org/docs/16/textsearch-features.html#TEXTSEARCH-MANIPULATE-TSQUERY)] will count the total number words but will pay no mind to boolean operators; as such, the value that numnode returns is larger, and non-representative of the number of words in the longest phrase in the query:
+-- Indices -------------------------------------------------------
 
-```
-SELECT numnode(to_tsquery('needle<->in<->the<->haystack|hidden<->treasure'))
-
-::>
- numnode 
----------
-       7
-(1 row)
-```
-In looking at the search term `needle<->in<->the<->haystack | hidden<->treasure`, we can see that there is a phrase of 4 words and a phrase of 2 words, and we want to return the maximum value (4). 
-
-A solution to this issue will allow us to better control the output of ts_headline and smooth out some of our logic going forward.
-
-### 3. How can I use ts_headline to return the exact phrase matches from a lexeme-reduced TSVector
-When a full-text search engine ingests and indexes text, typically the content is processed, word-by-word, against a language-specific dictionary, reduced to its lexeme (word root), and stored alphabetically in an inverted index with their position in the text; common connctive words (the, and, am, do as examples) are removed and not indexed.
-
-In pre-realizing the TSVector in pgsql, when we perform search by similarly reducing the search term to its lexemes (as with the haystack, so too with the needle), we are losing the information of the exact terms within the source text that are matching the user query. 
-
-#### Example: TSVector lexeme reduction loses the exact content matched
-```
-SELECT to_tsvector('exacting exactly the exact exaction that exacts the exacted');
-
-     to_tsvector     
----------------------
- 'exact':1,2,4,5,7,9
-(1 row)
+CREATE UNIQUE INDEX files_pkey ON files(id int4_ops);
 ```
 
-Can we use ts_headline to retrieve the exact strings that are being matched in the lexeme-reduced index lookup?
+## Create a trigger to compute tsvector and populate content_tsv
+Next, we will add a trigger on the files table to update the content TSV to accurately reflect the content column of the tuple.
+```
+-- Create or replace the trigger function
+CREATE OR REPLACE FUNCTION trg_update_content_tsv()
+RETURNS TRIGGER AS $$
+BEGIN
+    NEW.content_tsv := to_tsvector('english', NEW.content);
+    RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
 
-That is:
-```
-SELECT SOME_FUNCTION('exacting exactly the exact exaction that exacts the exacted', ts_tsquery('exact'));
-
-::>
- SOME_FUNCTION
----------------
-exacting, exactly, exact, exaction, exacts, exacted
-```
-
-### 4. ts_headline only highlights single words for multi-word phrase queries.
-For multi-word search terms, only the single words that comprise the search term are highlighted. Combining this with the first issue (ts_headline returns passages that do NOT contain the searched phrase), we will display highlights that do not fully demonstrate the phrase semantics of search applied. For instance:
-```
-SELECT ts_headline('search is separate from term and then combined in a search term', 
-                   to_tsquery('search<->term'));
-
-::>
-<b>search</b> is separate from <b>term</b> and then combined in a <b>search</b> <b>term</b>
-```
-In this case, the desired result is that the phrase, in its full form, is highlighted as a single term. That is, `<b>search</b> <b>term</b>` should be returned as `<b>search term</b>`:
-```
-<b>search</b> is separate from <b>term</b> and then combined in a <b>search term</b>
+-- Create the trigger on the files table
+CREATE TRIGGER update_content_tsv_trigger
+BEFORE INSERT OR UPDATE OF content ON files
+FOR EACH ROW
+EXECUTE FUNCTION trg_update_content_tsv();
 ```
 
-This is particularly important when highlighting multi-word search terms that include stop-words in the query. Consider:
+## Fill the files table with Dickens
+To emunlate large texts, we will fill the files table with a number of rows of content, with each row actually containing the first chapter to Charles Dickens' A tale of two cities:
 ```
-SELECT ts_headline('Do not underestimate the power of the pen in changing the world.', 
-                   to_tsquery('power<->of<->the<->pen'));
+INSERT INTO files (content)
+SELECT CONCAT(REPEAT('It was the best of times, it was the worst of times, it was the age of wisdom, it was the age of foolishness, it was the epoch of belief, it was the epoch of incredulity, it was the season of Light, it was the season of Darkness, it was the spring of hope, it was the winter of despair, we had everything before us, we had nothing before us, we were all going direct to Heaven, we were all going direct the other way—in short, the period was so far like the present period, that some of its noisiest authorities insisted on its being received, for good or for evil, in the superlative degree of comparison only.
 
-::>
-Do not underestimate the <b>power</b> of the <b>pen</b> in changing the world.
+There were a king with a large jaw and a queen with a plain face, on the throne of England; there were a king with a large jaw and a queen with a fair face, on the throne of France. In both countries it was clearer than crystal to the lords of the State preserves of loaves and fishes, that things in general were settled for ever.
+
+It was the year of Our Lord one thousand seven hundred and seventy-five. Spiritual revelations were conceded to England at that favoured period, as at this. Mrs. Southcott had recently attained her five-and-twentieth blessed birthday, of whom a prophetic private in the Life Guards had heralded the sublime appearance by announcing that arrangements were made for the swallowing up of London and Westminster. Even the Cock-lane ghost had been laid only a round dozen of years, after rapping out its messages, as the spirits of this very year last past (supernaturally deficient in originality) rapped out theirs. Mere messages in the earthly order of events had lately come to the English Crown and People, from a congress of British subjects in America: which, strange to relate, have proved more important to the human race than any communications yet received through any of the chickens of the Cock-lane brood.
+
+France, less favoured on the whole as to matters spiritual than her sister of the shield and trident, rolled with exceeding smoothness down hill, making paper money and spending it. Under the guidance of her Christian pastors, she entertained herself, besides, with such humane achievements as sentencing a youth to have his hands cut off, his tongue torn out with pincers, and his body burned alive, because he had not kneeled down in the rain to do honour to a dirty procession of monks which passed within his view, at a distance of some fifty or sixty yards. It is likely enough that, rooted in the woods of France and Norway, there were growing trees, when that sufferer was put to death, already marked by the Woodman, Fate, to come down and be sawn into boards, to make a certain movable framework with a sack and a knife in it, terrible in history. It is likely enough that in the rough outhouses of some tillers of the heavy lands adjacent to Paris, there were sheltered from the weather that very day, rude carts, bespattered with rustic mire, snuffed about by pigs, and roosted in by poultry, which the Farmer, Death, had already set apart to be his tumbrils of the Revolution. But that Woodman and that Farmer, though they work unceasingly, work silently, and no one heard them as they went about with muffled tread: the rather, forasmuch as to entertain any suspicion that they were awake, was to be atheistical and traitorous.
+
+In England, there was scarcely an amount of order and protection to justify much national boasting. Daring burglaries by armed men, and highway robberies, took place in the capital itself every night; families were publicly cautioned not to go out of town without removing their furniture to upholsterers’ warehouses for security; the highwayman in the dark was a City tradesman in the light, and, being recognised and challenged by his fellow-tradesman whom he stopped in his character of “the Captain,” gallantly shot him through the head and rode away; the mail was waylaid by seven robbers, and the guard shot three dead, and then got shot dead himself by the other four, “in consequence of the failure of his ammunition:” after which the mail was robbed in peace; that magnificent potentate, the Lord Mayor of London, was made to stand and deliver on Turnham Green, by one highwayman, who despoiled the illustrious creature in sight of all his retinue; prisoners in London gaols fought battles with their turnkeys, and the majesty of the law fired blunderbusses in among them, loaded with rounds of shot and ball; thieves snipped off diamond crosses from the necks of noble lords at Court drawing-rooms; musketeers went into St. Giles’s, to search for contraband goods, and the mob fired on the musketeers, and the musketeers fired on the mob, and nobody thought any of these occurrences much out of the common way. In the midst of them, the hangman, ever busy and ever worse than useless, was in constant requisition; now, stringing up long rows of miscellaneous criminals; now, hanging a housebreaker on Saturday who had been taken on Tuesday; now, burning people in the hand at Newgate by the dozen, and now burning pamphlets at the door of Westminster Hall; to-day, taking the life of an atrocious murderer, and to-morrow of a wretched pilferer who had robbed a farmer’s boy of sixpence.
+
+All these things, and a thousand like them, came to pass in and close upon the dear old year one thousand seven hundred and seventy-five. Environed by them, while the Woodman and the Farmer worked unheeded, those two of the large jaws, and those other two of the plain and the fair faces, trod with stir enough, and carried their divine rights with a high hand. Thus did the year one thousand seven hundred and seventy-five conduct their Greatnesses, and myriads of small creatures—the creatures of this chronicle among the rest—along the roads that lay before them. ',
+1) || 'unique needle',
+generate_series(1, 100)); 
 ```
-However, we want the entire phrase highlighted and wrapped in a single tag, like so:
-```
-Do not underestimate the <b>power of the pen</b> in changing the world.
-```
+The above will generate 100 rows with the first chapter repeated once per row, as the entry for content
