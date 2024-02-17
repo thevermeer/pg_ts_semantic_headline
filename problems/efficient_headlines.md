@@ -25,10 +25,3 @@ However, we want the entire phrase highlighted and wrapped in a single tag, like
 ```
 Do not underestimate the <b>power of the pen</b> in changing the world.
 ```
-
-## Approach
-### Function should accept pre-computed TSVector
-Taking note of the various arguments and arities of the built_in `ts_headline` function, we notice that ts_headline does not accept a precomputed TSVector, and computes the lexeme position of a given source text on every invocation. This should hint as to one of the many reasons that `ts_headline` is so woefully non-performant. Given that it is recommended to pre-compute text into TSVectors, one of the aims of this work is to leverage pre-computed TSVectors in order to deliver `ts_headline` functionality with less computational overhead. (At the cost of disk space, mind you...)
-
-### Function will convert search phrase into TSVector
-Secondly, as `ts_headline` only highlights single words in a multi-word search term, we need a different way of matching and retrieving the multi-word search patterns and their location in the TSVector. In order to do this, we are going to write a function that accepts a phrase as a string and converts that phrase to a tsvector. In turn, we are going to use the query/needle TSVector to identify matching phrase patterns in the haystack TSVector.

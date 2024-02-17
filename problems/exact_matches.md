@@ -1,4 +1,32 @@
 # Retrieveing Exact Matches from PostgreSQL Text Search
+When a full-text search engine ingests and indexes text, typically the content is processed, word-by-word, against a language-specific dictionary, reduced to its lexeme (word root), and stored alphabetically in an inverted index with their position in the text; common connctive words (the, and, am, do as examples) are removed and not indexed.
+
+In pre-realizing the TSVector in pgsql, when we perform search by similarly reducing the search term to its lexemes (as with the haystack, so too with the needle), we are losing the information of the exact terms within the source text that are matching the user query. 
+
+#### Example: TSVector lexeme reduction loses the exact content matched
+```
+SELECT to_tsvector('exacting exactly the exact exaction that exacts the exacted');
+
+     to_tsvector     
+---------------------
+ 'exact':1,2,4,5,7,9
+(1 row)
+```
+
+Can we use ts_headline to retrieve the exact strings that are being matched in the lexeme-reduced index lookup?
+
+That is:
+```
+SELECT SOME_FUNCTION('exacting exactly the exact exaction that exacts the exacted', ts_tsquery('exact'));
+
+::>
+ SOME_FUNCTION
+---------------
+exacting, exactly, exact, exaction, exacts, exacted
+```
+
+## Setup 
+
 If you follow the [[Project Setup](https://github.com/thevermeer/postgresql_semantic_tsheadline/blob/main/setup.md)], you will have a data table with 10,000 rows, each containing a source text as well as a pre-realized TSVector representation of the content.
 
 Given that the TSVector is computed and available is it possible to use the TSVector to determine the location (and thus text) of a phrase matching? 
