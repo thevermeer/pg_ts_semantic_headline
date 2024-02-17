@@ -279,8 +279,46 @@ LANGUAGE plpgsql;
 The function accepts the content to be highlighted, a TSVector representation of the content and a phrase to be matched, and returns a table of the exact strings in the content that match the phrase. If a TSVector has not been pre-realized, the text can be cast on the fly in the function invocation, but this is not recommended as it will be a massive performance burden.
 
 ### Examples
+As we begin querying for content, it seems that we have been successful in creating a function that returns the exact match for fuzzy queries:
+#### Example 1
+```
+SELECT ts_exact_phrase_matches(content, content_tsv, 'it was the age of wisdom') FROM files LIMIT 1;
+```
+produces:
+```
+age of wisdom,
+```
+This is correct; the "it was the" portion of the search query are all stop words and therefore excluded from the range. Great.
 
+The correct matching continues further into the text, and we will only begin to encounter trouble after
 
+#### Example 2
+```
+SELECT ts_exact_phrase_matches(content, content_tsv, 'direct the other way in') FROM files LIMIT 1;
+```
+nearly correctly produces: (Notice the extra 'in' at the end)
+```
+direct the other way—in
+```
+#### Explanation
+As we encounted terms within our text that contain hyphens, as an example, we find that the default english stem parser is creating multiple entries for the parts of the term. Namely, for a hypenated term, we index the first term, the last term and the conjoined 2-word term. The result is that when indexing a single hypenated word, we index 3 terms, like so:
+```
+SELECT to_tsvector('seventy-five');
+::>
+ to_tsvector 
+-------------
+ 'five':3 'seventi':2 'seventy\-f':1 
+```
+as well as:
+```
+SELECT to_tsvector('power-law');
+::>
+ to_tsvector
+-------------
+'law':3 'power':2 'power-law':1
+```
+
+#### Example 3
 
 
 ### Limitations
