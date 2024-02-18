@@ -127,7 +127,7 @@ Execution Time: 3564.792 ms
 Wow. We have cut the total time of our function from 13s per 100 rows down to ~3.5 seconds. We are almost there, but it is also worth remembering: the total time for the built-in `ts_headline` function was ~5500ms. Our function is already **40% faster that the OOTB ts_headline function**. 
 
 ### 4. JIT v. Precomputed word arrays
-4) The call to `get_word_range(content, first, last)` is accounting for roughly 20% of initial total time (~3-4s or ~30-40ms per row) and nearly all of our remaining computational cost. The vast majority of that computational cost is going into exploding a space-delimited string into an array of words.
+The call to `get_word_range(content, first, last)` is accounting for roughly 20% of initial total time (~3-4s or ~30-40ms per row) and nearly all of our remaining computational cost. The vast majority of that computational cost is going into exploding a space-delimited string into an array of words.
 
 What if we pre-computed our space-delimited vector from the text passed through our `prepare_text_for_tsvector` function, and pass that into `ts_exact_phrase_matches`?
 ```
@@ -135,7 +135,7 @@ EXPLAIN ANALYZE
 SELECT ts_exact_phrase_matches(
 		content_arr, 
 		content_tsv, 
-		'Eighteen years!” am the passenger') 
+		'Eighteen years!” or the passenger') 
 FROM files;
 ::>
 ProjectSet  (cost=0.00..528.50 rows=100000 width=32) (actual time=3.293..281.523 rows=100 loops=1)
