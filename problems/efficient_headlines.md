@@ -146,6 +146,8 @@ Execution Time: 281.631 ms
 
 Look at that! If we pre-realize the space-delimited array of our prepared content, we are able to process 100 rows, each of 16,300+ words of text, in less that 300ms or 2.8ms per row. The baseline time for the built-in `ts_headline` function was 5592ms, and thus, we have managed to highlight the semantically correct phrase in roughly 5% of the time (281ms). **This technique represents a 20 x improvement over built-in functionality**
 
+## Performant Exact Phrase Matches Function
+
 Let's look at our new function:
 ```
 CREATE OR REPLACE FUNCTION ts_exact_phrase_matches(haystack_arr TEXT[], content_tsv TSVECTOR, user_search TEXT)
