@@ -21,8 +21,8 @@ As a developer, the built-in ts_headline offers a number of quirks and gotchas, 
 Approach: [[Guarantee that a TS Headline conforms to a ts query phrase](https://github.com/thevermeer/postgresql_semantic_tsheadline/blob/main/problems/semantic_headlines.md)]
 ### 2. How can I convert a fuzzy full-text search into the exact phrase matches in a document
 Approach: [[Produce the exact content that pgsql matches on a fuzzy search](https://github.com/thevermeer/postgresql_semantic_tsheadline/blob/main/problems/exact_matches.md)]
-### 3. ts_headline only highlights single words for multi-word phrase queries
-Approach: [[Headline function that highlights phrases without partial matches](https://github.com/thevermeer/postgresql_semantic_tsheadline/blob/main/problems/multi_word_phrase_highlighting.md)]
-### 4. ts_headline is very slow
+### 3. ts_headline is very slow. Our solution to Problem 2 is slower.
 Approach: [[An approach to content hihglighting that is up to 10 times faster than built-in ts_headline](https://github.com/thevermeer/postgresql_semantic_tsheadline/blob/main/problems/efficient_headlines.md)]
+### 4. ts_headline only highlights single words for multi-word phrase queries
+Approach: [[Headline function that highlights phrases without partial matches](https://github.com/thevermeer/postgresql_semantic_tsheadline/blob/main/problems/multi_word_phrase_highlighting.md)]
 
