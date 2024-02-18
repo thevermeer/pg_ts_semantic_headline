@@ -342,12 +342,12 @@ CREATE OR REPLACE FUNCTION prepare_text_for_tsvector(result_string text)
 RETURNS text AS
 $$
 BEGIN
-	result_string := regexp_replace(result_string, '(\w)([^[:alnum:]|\s]+)(\w)', E'\\1\\2 \\3', 'g');
-	result_string := regexp_replace(result_string, '(\w)([^[:alnum:]|\s]+)(\w)', E'\\1\\2 \\3', 'g');
+	result_string := regexp_replace(result_string, '(\w)([^[:alnum:]|\s]+)(\w)', E'\\1\\2\u0001 \\3', 'g');
+	result_string := regexp_replace(result_string, '(\w)([^[:alnum:]|\s]+)(\w)', E'\\1\\2\u0001 \\3', 'g');
 	result_string := regexp_replace(result_string, '(\s)([^[:alnum:]|\s]+)(\s)', E' ', 'g');
 	result_string := regexp_replace(result_string, E'[\\s]+', ' ', 'g');		    
 
-    RETURN result_string;
+	RETURN result_string;
 END;
 $$
 STABLE
