@@ -60,7 +60,9 @@ Clearly, we have a lot of ground to make up.
 
 ## Cost Analysis
 In examining our UDF, `ts_exact_phrase_matches`, we find that our cost is coming from several places. If it takes 25s to process 100 rows of our `table`, we currently require ~250ms per row. Where is that cost coming from?
-1) Generating the `TS_VECTOR` on the fly is expensive and requires ~9 seconds to process per 100 rows. Preferring the pre-computed `content_tsv` column brings our total runtime across 100 records from 25 seconds to 16 seconds.
+
+### 1. JIT v. Precomputed content TSVector
+Generating the `TS_VECTOR` on the fly is expensive and requires ~9 seconds to process per 100 rows. Preferring the pre-computed `content_tsv` column brings our total runtime across 100 records from 25 seconds to 16 seconds.
 ```
 EXPLAIN ANALYZE
 SELECT ts_exact_phrase_matches(
@@ -74,7 +76,8 @@ ProjectSet  (cost=0.00..553.50 rows=100000 width=32) (actual time=166.332..17063
 Planning Time: 0.118 ms
 Execution Time: 17063.375 ms
 ```
-2) the call to `prepare_text_for_tsvector(content)` is accounting for roughly 25% of total time (4s or 40ms per row). If we replace that call with a pre-computed row, we see:
+### 2. JIT v. Precomputed content prepare_text_for_tsvector
+The call to `prepare_text_for_tsvector(content)` is accounting for roughly 25% of total time (4s or 40ms per row). If we replace that call with a pre-computed row, we see:
 ```
 EXPLAIN ANALYZE
 SELECT ts_exact_phrase_matches(
@@ -90,7 +93,8 @@ Execution Time: 13121.152 ms
 ```
 Great! In 2 steps of precomputing, we have reduced our time to compute by half. Let's keep going!
    
-3) Unpacking the tsvector of a 16,000+ word document, and the subsequent joining of that to the TSVector of the search query is a significant in-memory table operation; its computation and then aggregation accounts for roughly 3/4th (9 seconds) of the overall cost. Let's find a way of reducing that:
+### 3. Use PGSQL's full-text tools to reduce compute load on TSVectors
+Unpacking the tsvector of a 16,000+ word document, and the subsequent joining of that to the TSVector of the search query is a significant in-memory table operation; its computation and then aggregation accounts for roughly 3/4th (9 seconds) of the overall cost. Let's find a way of reducing that:
 
 After some reading of PGSQL full-text manipulation functions, we find two of interest:  
 a) `setweight(TSVECTOR, TEXT, TEXT[])` - the 3-arity form of this function allows one to add weight strings to a list of the lexemes provided as an array of text in the third argument. If we therefore invoke setweight on the haystack TSV, passing in the array of lexemes in our needle, we 'weight' the relevant query lexemes in the haystack:
@@ -122,6 +126,7 @@ Execution Time: 3564.792 ms
 
 Wow. We have cut the total time of our function from 13s per 100 rows down to ~3.5 seconds. We are almost there, but it is also worth remembering: the total time for the built-in `ts_headline` function was ~5500ms. Our function is already **40% faster that the OOTB ts_headline function**. 
 
+### 4. JIT v. Precomputed word arrays
 4) The call to `get_word_range(content, first, last)` is accounting for roughly 20% of initial total time (~3-4s or ~30-40ms per row) and nearly all of our remaining computational cost. The vast majority of that computational cost is going into exploding a space-delimited string into an array of words.
 
 What if we pre-computed our space-delimited vector from the text passed through our `prepare_text_for_tsvector` function, and pass that into `ts_exact_phrase_matches`?
@@ -175,8 +180,11 @@ STABLE
 LANGUAGE plpgsql;
 ```
 
-Some notes:
-- As we now do not have to render a word array, the call of `array_to_string(haystack_arr[first:last], ' ')` will aggregate a range of words inserting spaces in between
+#### Some notes:
+- As we now do not have to render a word array, the call of `array_to_string(haystack_arr[first:last], ' ')` will aggregate a range of words inserting spaces in between.
+  
 - Given the content added through our `prepare_text_for_tsvector` function, we know that the character sequence has (very probably) been inserted to break apart words deliniated with special characters. As such, the invocation of replace, `replace(array_to_string(haystack_arr[first:last], ' '), chr(1) || ' ', '')` removes both the unicode character 0001 and the space, howfully returning the string to something akin to how we found it.
+  
 - The addition of the anded term in the WHERE condition, `array_to_string(haystack_arr[first:last], ' ') @@ phraseto_tsquery(user_search)` ensures that the exact match we return correctly obeys the PGSQL text search semantics. (Otherwise, we could highlight a term where only the first and last words are 'correct')
+
 
