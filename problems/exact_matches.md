@@ -416,9 +416,7 @@ FROM files LIMIT 1;
 ```
 
 ## Limitations
-- Assumes that words are space-delimited tokens and therefore the cropping of the source text needs to be improved
 - Does not work with TS logical operators
-- Does not properly match terms inside of a multi-word phrase
 - Does not work with TS Queries; the query phrase must come in as user-keyed text.
 - This process is slow; 3 times slower than `ts_headline`.
 
