@@ -290,11 +290,11 @@ age of wisdom,
 ```
 This is correct; the "it was the" portion of the search query are all stop words and therefore excluded from the range. Great.
 
-The correct matching continues further into the text, and we will only begin to encounter trouble after
+The correct matching continues further into the text, and we will only begin to encounter trouble after a few paragraphs of text
 
 #### Example 2
 ```
-SELECT ts_exact_phrase_matches(content, content_tsv, 'direct the other way in') FROM files LIMIT 1;
+SELECT ts_exact_phrase_matches(content, content_tsv, 'direct the other way') FROM files LIMIT 1;
 ```
 nearly correctly produces: (Notice the extra 'in' at the end)
 ```
@@ -319,9 +319,107 @@ SELECT to_tsvector('power-law');
 ```
 
 #### Example 3
+As we start searching terms further down in a given text, here, content from chapter 3 of A Tale of Two Cities, and the phrase `"two passengers would admonish him to pull up the window"` actually returns content from 4 paragraphs 'lower' in the document.
+```
+SELECT ts_exact_phrase_matches(content, content_tsv, 'two passengers would admonish him to pull up the window') FROM files LIMIT 1;
+::>
+ ts_exact_phrase_matches
+-------------------------
+wet, the sky was clear, and the sun rose bright,
+```
+#### Conclusions
+Clearly, we need to do more than tokenize our source string, because TSVector is doing some special handling of special characters in the source text, in order to better use the lexeme-reduced, english-stem TSVector to identify the positions of fuzzy searches within the source text. Let's try that now:
 
+## Preparing source text for better positional indexing
+In order to get a more favourable rendering of the TSVector to correlate positions to the actual word position in the text, we are going to apply a few rules to the source text. Those rules are:
+- Any word that contains a special character is split and the second term will have a space inserted prior to the word.
+- Any sequence of exclusively non-word characters will be removed and replaced with a space.
+- All instances of multiple whitespace tokens (multiple line returns, double spaces) are reduced to a single space
 
-### Limitations
+Pulling that all together, we produce the following function:
+```
+CREATE OR REPLACE FUNCTION prepare_text_for_tsvector(result_string text)
+RETURNS text AS
+$$
+BEGIN
+	result_string := regexp_replace(result_string, '(\w)([^[:alnum:]|\s]+)(\w)', E'\\1\\2 \\3', 'g');
+	result_string := regexp_replace(result_string, '(\w)([^[:alnum:]|\s]+)(\w)', E'\\1\\2 \\3', 'g');
+	result_string := regexp_replace(result_string, '(\s)([^[:alnum:]|\s]+)(\s)', E' ', 'g');
+	result_string := regexp_replace(result_string, E'[\\s]+', ' ', 'g');		    
+
+    RETURN result_string;
+END;
+$$
+STABLE
+LANGUAGE plpgsql;
+```
+This articulation of our string cleaning pattern will produce a string that breaks apart hypen-delimited and special-character delimited terms into single words and as a result, when we convert the string to TSVector, the word positions of lexemes in the vector will correspond to the position of the same term in a space-tokenized string.
+
+```
+SELECT prepare_text_for_tsvector('on seventy power-rules,  --- she!, !!@#!@$% entertain''s the reason-to-be! with F!in-ess');
+::>
+ prepare_text_for_tsvector
+---------------------------
+on seventy power- rules, she!, entertain' s the reason- to- be! with F! in- ess
+```
+Let's compare the before and after, resulting TSVector:
+```
+Before: SELECT to_tsvector('on seventy power-rules,  --- she!, !!@#!@$% entertain''s the reason-to-be! with F!in-ess');
+----------
+'entertain':7 'ess':18 'f':15 'in-ess':16 'power':4 'power-rul':3 'reason':11 'reason-to-b':10 'rule':5 'seventi':2
+```
+```
+After: SELECT to_tsvector(prepare_text_for_tsvector('on seventy power-rules,  --- she!, !!@#!@$% entertain''s the reason-to-be! with F!in-ess'));
+----------
+'entertain':6 'ess':15 'f':13 'power':3 'reason':9 'rule':4 'seventi':2
+```
+This may prove problematic in some contexts, however we can see that the resultant vector is freed from the expansion of character-delimited terms, and this will allow us to correctly position fuzzy matches against the exact text, reduced and returned from `prepare_text_for_tsvector`.
+
+With that, let's apply `prepare_text_for_tsvector` to BOTH the needle and haystack and see how effectively our scrubbing on the string has been:
+#### Example 2 revisited:
+```
+SELECT ts_exact_phrase_matches(
+		prepare_text_for_tsvector(content), 
+		TO_TSVECTOR(prepare_text_for_tsvector(content)), 
+		'direct the other way') 
+FROM files LIMIT 1;
+::>
+ ts_exact_phrase_matches
+-------------------------
+ direct the other way— 
+```
+That is what we want!
+
+#### Example 3 revisited:
+```
+SELECT ts_exact_phrase_matches(
+		prepare_text_for_tsvector(content), 
+		TO_TSVECTOR(prepare_text_for_tsvector(content)), 
+		'two passengers would admonish him to pull up the window') 
+FROM files LIMIT 1;
+::>
+ ts_exact_phrase_matches
+-------------------------
+ two passengers would admonish him to pull up the window,
+```
+Great!. In fact, if we search the last phrase in chapter 3 of `A Tale pf Two Cities`, which happens to be `Gracious Creator a day! To be buried alive for eighteen years` we get precisely that back:
+```
+SELECT ts_exact_phrase_matches(
+		prepare_text_for_tsvector(content), 
+		TO_TSVECTOR(prepare_text_for_tsvector(content)), 
+		'Gracious Creator a day! further not the one for eighteen years!”') 
+FROM files LIMIT 1;
+::>
+ ts_exact_phrase_matches
+-------------------------
+ “Gracious Creator of day! To be buried alive for eighteen years!”
+```
+
+## Limitations
 - Assumes that words are space-delimited tokens and therefore the cropping of the source text needs to be improved
 - Does not work with TS logical operators
+- Does not properly match terms inside of a multi-word phrase
 - Does not work with TS Queries; the query phrase must come in as user-keyed text.
+- This process is slow; 3 times slower than `ts_headline`.
+
+This whole work presents a good start, but we are going to have to improve the efficiency of this process in order to have a viable, performant solution.
