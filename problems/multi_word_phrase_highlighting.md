@@ -212,7 +212,7 @@ From this, we are going to use `regexp_matches` to acrete the `<n>` distance ter
 ```
 to_tsvector((SELECT replace_multiple_strings(phrase_query, 
                                              array_agg('<' || g[1] || '>'), 
-                                             array_agg(REPEAT(' xdummywordx', g[1]::SMALLINT - 1)))
+                                             array_agg(REPEAT(' xdummywordx ', g[1]::SMALLINT - 1)))
              FROM regexp_matches(phrase_query, '<(\d+)>', 'g') AS matches(g)))
 ```
 produces:
@@ -237,6 +237,7 @@ SELECT setweight(ts_filter(setweight(setweight(phrase_vec, 'A'),
                            '{a}'), 
                  'D') AS phrase_vector
 ```
+
 ### The ts_query_to_ts_vector function
 Here's the function fully assembled:
 ```
@@ -263,4 +264,82 @@ BEGIN
 END;
 $$
 LANGUAGE plpgsql;
+```
+
+All together, `ts_query_to_ts_vector` accepts a TSQuery and converts it into a table of phrases, returning both the TSVector and TSQuery representation of a phrase. Consider:
+```
+SELECT *  FROM ts_query_to_ts_vector(to_tsquery('power | (friend<19>people & !(rub<2>life)) | power<2>positive'));
+```
+Produces:
+```
+ phrase_vector |  phrase_query 
+-------------------------------
+ 'power':1              |  'power' 
+ 'friend':1 'peopl':20  |  'friend' <19> 'peopl' 
+ 'posit':3 'power':1    |  'power' <2> 'posit' 
+```
+
+We now have the ability to convert a TSQuery into a TSVector. Based on the techniques developed in [[Retrieveing Exact Matches from PostgreSQL Text Search](https://github.com/thevermeer/postgresql_semantic_tsheadline/blob/main/problems/exact_matches.md)] and streamlined in [[Efficient Content Retrieval](https://github.com/thevermeer/postgresql_semantic_tsheadline/blob/main/problems/efficient_content_retrieval.md)], we will JOIN the needle and haystack TSVectors and determine overlaps. The key difference is that we are now processing multiple multi-words search phrases; in doing that, we are aiming at a single pass join, and not devolving into a FOR loop.
+
+In the _Retrieveing Exact Matches from PostgreSQL Text Search_ document , we brought forward a function, `ts_vector_to_table` for decomposing a TSVector into a table of lexemes and positions, ordered by position. See [[Unnesting a TSVector into a table of occurences](https://github.com/thevermeer/postgresql_semantic_tsheadline/blob/main/problems/exact_matches.md#unnesting-a-tsvector-into-a-table-of-occurences)].
+
+For our purposes now, we will bring our new `ts_query_to_ts_vector` function together with `ts_vector_to_table` for further decompose our TSQuery into a table. We are taking this path because we want to maintain the relative lexeme positions of each of the n phrases contained in the TSQuery; the built-in TSVector concatenate function will NOT preserve the relative positions of the second, concatenated vector, shifting them to the positions AFTER the last lexeme in the first vector. Witness:
+```
+SELECT * FROM ts_vector_to_table(TO_TSVECTOR('first second third') || TO_TSVECTOR('one two three'));
+::>
+ lex | pos 
+------------
+ first | 1 
+ second | 2 
+ third | 3 
+ one | 4 
+ two | 5 
+ three | 6 
+```
+Semantically, this represent a single, linear phrase of 6 words. What we actually want is EITHER 'first' OR 'one' to occupy position 1, like so:
+```
+ lex | pos 
+------------
+ first | 1 
+ second | 2 
+ third | 3 
+ one | 1 
+ two | 2 
+ three | 3 
+```
+
+### The ts_query_to_table function
+Keeping the above in mind, we bring together our TSQuery decomposed into a table of TSVectors, with our function that decomposes a TSVector into a table of lexemes and their positions. This gives us:
+```
+CREATE OR REPLACE FUNCTION ts_query_to_table(input_query TSQUERY)
+RETURNS TABLE(phrase_vector TSVECTOR, phrase_query TSQUERY, lexeme TEXT, pos SMALLINT) AS
+$$
+BEGIN
+	RETURN QUERY 
+	(WITH phrases AS (SELECT phrase.phrase_vector, phrase.phrase_query 
+	                  FROM ts_query_to_ts_vector(input_query) AS phrase)
+     SELECT phrases.phrase_vector, 
+            phrases.phrase_query,
+            word.lex, 
+            word.pos
+     FROM phrases, ts_vector_to_table(phrases.phrase_vector) AS word);
+END;
+$$
+STABLE
+LANGUAGE plpgsql;
+```
+With that, from the example immediately above:
+```
+SELECT * FROM ts_query_to_table('first<->second<->third|one<->two<->three');
+```
+Produces:
+```
+ phrase_vector |  phrase_query |  lexeme |  pos 
+--------------------------------------------
+ 'first':1 'second':2 'third':3 |'first' \<\-\> 'second' \<\-\> 'third' | first  | 1 
+ 'first':1 'second':2 'third':3 |'first' \<\-\> 'second' \<\-\> 'third' | second | 2 
+ 'first':1 'second':2 'third':3 |'first' \<\-\> 'second' \<\-\> 'third' | third  | 3 
+ 'one':1 'three':3 'two':2      |'one' \<\-\> 'two' \<\-\> 'three'      | one    | 1 
+ 'one':1 'three':3 'two':2      |'one' \<\-\> 'two' \<\-\> 'three'      | two    | 2 
+ 'one':1 'three':3 'two':2      |'one' \<\-\> 'two' \<\-\> 'three'      | three  | 3 
 ```
