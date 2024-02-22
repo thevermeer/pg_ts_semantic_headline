@@ -248,6 +248,7 @@ DECLARE
     input_text TEXT;
 BEGIN
     input_text := replace(querytree(input_query)::TEXT, '<->', '<1>');
+    input_text := regexp_replace(input_text, '\(|\)', '', 'g');
     RETURN QUERY 
     (SELECT setweight(ts_filter(setweight(setweight(phrase_vec, 'A'), 
                                           'D',
@@ -343,3 +344,158 @@ Produces:
  'one':1 'three':3 'two':2      |'one' \<\-\> 'two' \<\-\> 'three'      | two    | 2 
  'one':1 'three':3 'two':2      |'one' \<\-\> 'two' \<\-\> 'three'      | three  | 3 
 ```
+
+## Bringing together Semantic TSQuery Headlines
+Jumping back to our previous attempt at phrase highlighting, we examine the `ts_phrase_headlines` function:
+```
+CREATE OR REPLACE FUNCTION ts_phrase_headlines(haystack_arr TEXT[], content_tsv TSVECTOR, user_search TEXT)
+RETURNS TEXT AS
+$$
+DECLARE minmaxarr SMALLINT[];
+DECLARE search_vec TSVECTOR;
+    
+BEGIN
+	user_search := prepare_text_for_tsvector(user_search);
+	search_vec  := TO_TSVECTOR(user_search);
+	minmaxarr   := (SELECT ARRAY[MIN(pos), MAX(pos)] FROM ts_vector_to_table(search_vec));
+        content_tsv := ts_filter(setweight(content_tsv, 'A', tsvector_to_array(search_vec)), '{a}');
+	
+    RETURN 
+          (SELECT string_agg(blurb, ' ... ' )
+           FROM (SELECT replace( array_to_string(haystack_arr[GREATEST(first-5, 1):first-1], ' ') ||
+                                    ' <b>' || 
+                                    array_to_string(haystack_arr[first:last], ' ') || 
+                                    '</b> ' || 
+                                    array_to_string(haystack_arr[last+1:last+5], ' ')
+                                    , 
+                               chr(1) || ' ', 
+                               '') as blurb
+                 FROM (SELECT MIN(pos) AS first, MAX(pos) AS last 
+                       FROM (SELECT haystack.pos, 
+                                    haystack.pos - (query_vec.pos - minmaxarr[1]) as range_start
+                             FROM (SELECT lex, pos FROM ts_vector_to_table(content_tsv)) AS haystack 
+			           INNER JOIN ts_vector_to_table(search_vec) AS query_vec 
+			           ON haystack.lex = query_vec.lex
+			           ORDER BY haystack.pos
+			           LIMIT 5)
+	      		 GROUP BY range_start)
+           WHERE (minmaxarr[2] - minmaxarr[1]) = (last - first)
+           AND array_to_string(haystack_arr[first:last], ' ') @@ phraseto_tsquery(user_search)
+           ORDER BY first ASC));
+END;
+$$
+STABLE
+LANGUAGE plpgsql;
+```
+
+Here, we note that we have:
+- only one phrase rendered into a TSVector
+- a `minmaxarr` that considers the positions of only one phrase
+- `content_tsv` is only being filtered for the lexemes of a single phrase
+- `prepare_text_for_tsvector` is going to have to be pushed upstream, into the preprocessing of the TSQuery that we want to highlight.
+
+In order to search over multiple, logically connected phrases, we are going to have to expand our strategy, by:
+- Expanding the join in `INNER JOIN ts_vector_to_table(search_vec)` to instead explode the entire TSQuery using `ts_query_to_table`
+- Collecting all of the lexemes in each of the search phrases contained in the TSQuery, and filtering `content_tsv` to include those lexemes.
+  ```
+  content_tsv := (SELECT ts_filter(setweight(content_tsv, 'A', ARRAY_AGG(lexes)), '{a}')
+                  FROM (SELECT UNNEST(tsvector_to_array(vec.phrase_vector)) AS lexes
+                        FROM ts_query_to_ts_vector(search_query) AS vec));
+  ```
+  Note that, here we are using the built-in `tsvector_to_array` to return an array of phrase lexemes, unnesting that array, and recomposing the array of lexemes for all phrases.
+- For each search phrase in the TSQuery, we will need to calculate its min/max lexeme positions on the fly.
+
+In order to accomplish the task of highlighting multiple query phrases in a single section, we are going to break up our concerns into 2 functions:
+- `ts_query_matches` will return a table of the positions and lexemes of a limited number of matches within the document
+- `ts_query_headline` will effectively replace the built-in `ts_headline` function, by aggregating over the ranges of lexeme positions returned by `ts_query_matches`.
+
+## The ts_query_matches function
+The purpose of the `ts_query_matches` function is to determine the matching position of lexemes within a PGSQL full-text query.
+
+The function accepts:
+- `haystack_arr` as an ordered array of words, as they appear in the document, AFTER the source string was treated with the `prepare_text_for_tsvector` string cleaning function
+- content_tsv as the TSVector rendered from the content, again, AFTER treatment with `prepare_text_for_tsvector` to ensure that the "haystack" has been cleared of words delimited with special characters, thus preserving the word positions in the TSVector after lexizing and stemming.
+- `search_query` as  TSQuery statement; that statement can include multiple phrases separated by OR, AND and NOT `|, &, !` operators, brackets, and 
+
+```
+CREATE OR REPLACE FUNCTION ts_query_matches(haystack_arr TEXT[], content_tsv TSVECTOR, search_query TSQUERY)
+RETURNS TABLE(words TEXT, tsquery TSQUERY, group_no SMALLINT, start_pos SMALLINT, end_pos SMALLINT) AS
+$$    
+BEGIN
+    content_tsv := (SELECT ts_filter(setweight(content_tsv, 'A', ARRAY_AGG(lexes)), '{a}')
+                    FROM (SELECT UNNEST(tsvector_to_array(vec.phrase_vector)) AS lexes
+                          FROM ts_query_to_ts_vector(search_query) AS vec));
+    RETURN QUERY
+    (
+        SELECT array_to_string(haystack_arr[first:last], ' ') as found_words,           
+               query AS pq,
+               range_start
+        FROM (SELECT MIN(pos) AS first, 
+                     MAX(pos) AS last, 
+                     range_start AS range_start, 
+                     MAX(lex) as lex,
+                     phrase_query as query
+              FROM (SELECT phrase_vector,
+                           query_vec.phrase_query,
+                           haystack.lex,
+                           haystack.pos AS pos, 
+                           haystack.pos - query_vec.pos 
+                           + (SELECT MIN(pos) 
+                              FROM ts_vector_to_table(query_vec.phrase_vector)) as range_start
+                    FROM ts_query_to_table(search_query) AS query_vec 
+                    INNER JOIN ts_vector_to_table(content_tsv) AS haystack 
+                    ON haystack.lex = query_vec.lexeme)
+              GROUP BY range_start, query, phrase_vector 
+              HAVING COUNT(*) = length(phrase_vector))
+        WHERE (last - first) = (SELECT MAX(pos) - MIN(pos) 
+                                FROM ts_query_to_table(query::TSQUERY))
+        AND array_to_string(haystack_arr[first:last], ' ') @@ query::TSQUERY
+        LIMIT 5
+   );
+END;
+$$
+STABLE
+LANGUAGE plpgsql;
+```
+Running the function on a single row in our `files` table, we see:
+```
+SELECT found.* 
+FROM (SELECT * FROM files LIMIT 1), 
+     ts_query_matches(content_arr, content_tsv, to_tsquery('best<2>time|worst<2>time')) AS found;
+```
+Producing:
+```
+ words | tsquery | group_no | start_pos | end_pos 
+---------------------------------------------------------
+| best of times,  | 'best' <2> 'time' |  4 |  4 |  6 
+| worst of times, |'worst' <2> 'time' | 10 | 10 | 12 
+```
+
+That is a simple demonstration of `ts_query_matches` returning the exact matches, phrase queries, and the start/end position of the terms.
+In less ideal situations, we can see that a more complex search yields a variety of results:
+```
+SELECT found.* 
+FROM (SELECT * FROM files LIMIT 1), 
+     ts_query_matches(content_arr, content_tsv, to_tsquery('best|time|worst')) AS found;
+```
+Returns 48 results (NOT listed :)) for a single document, and requires ~55ms per row to process. Thus, inside of our function the `LIMIT 5` is an arbitrary and ultimately configurable, in order to balance product and performance needs. _Do we need all 48 examples of a query within a text?_ If not, we will impose a limit.
+
+Nonetheless, consider the results of a more interesting query:
+```
+SELECT found.* 
+FROM (SELECT * FROM files LIMIT 1), 
+     ts_query_matches(content_arr, 
+                      content_tsv, 
+                      to_tsquery('(swallow<3>london<2>westminster|king<2>queen) & (worst<2>times)')) AS found;
+```
+Gives us:
+```
+ words | tsquery | group_no | start_pos | end_pos 
+--------------------------------------------------
+| worst of times,                          |'worst' \<2\> 'time'                       | 10   | 10   | 12 
+| swallowing up of London and Westminster. |'swallow' \<3\> 'london' \<2\> 'westminst' | 247  | 247  | 252 
+| king, the queen,                         |'king' \<2\> 'queen'                       | 7835 | 7835 | 7837 
+
+```
+
+Putting those pieces together, we now have a function that can retrieve the positions and exact match text of complex TSQuery statements; with the word positions and the exact matches we will be able to formulate, aggregate and regexp_replace our way towards a replacement for `ts_headline`
