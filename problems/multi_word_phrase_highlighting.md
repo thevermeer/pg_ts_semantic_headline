@@ -1,4 +1,4 @@
-# Highlightling multi-word phrases
+# Highlightling multiple. multi-word phrases
 
 For multi-word search terms, only the single words that comprise the search term are highlighted. Combining this with the first issue (ts_headline returns passages that do NOT contain the searched phrase), we will display highlights that do not fully demonstrate the phrase semantics of search applied. For instance:
 ```
@@ -492,10 +492,27 @@ Gives us:
 ```
  words | tsquery | group_no | start_pos | end_pos 
 --------------------------------------------------
-| worst of times,                          |'worst' \<2\> 'time'                       | 10   | 10   | 12 
-| swallowing up of London and Westminster. |'swallow' \<3\> 'london' \<2\> 'westminst' | 247  | 247  | 252 
+| worst of times,                          |'worst' \<2\> 'time'                       |   10 |   10 |   12 
+| swallowing up of London and Westminster. |'swallow' \<3\> 'london' \<2\> 'westminst' |  247 |  247 |  252 
 | king, the queen,                         |'king' \<2\> 'queen'                       | 7835 | 7835 | 7837 
 
 ```
 
-Putting those pieces together, we now have a function that can retrieve the positions and exact match text of complex TSQuery statements; with the word positions and the exact matches we will be able to formulate, aggregate and regexp_replace our way towards a replacement for `ts_headline`
+Putting those pieces together, we now have a function that can retrieve the positions and exact match text of complex TSQuery statements; with the word positions and the exact matches we will be able to formulate, aggregate and regexp_replace our way towards a replacement for `ts_headline`.
+
+## The ts_semantic_headlines
+In order to culminate the progress we have made in searching for TSQuery patterns in TSVectors, and as we can now return the exact positions and strings from compound, multi-phrase TSQueries, aggregate matches in close proximity to each other using `ts_query_exact_matches`, we are ready to aggregate and sort match ranges, and perform highlighting.
+
+Consider the following query that SELECTS from the files table, JOINs to the table/recordset returned by `ts_query_matches`; in this query:
+- The `WHERE id = (SELECT MIN(ID) FROM files)` condition will return results from ONLYL one, single file. 
+- The `GROUP BY id, ROUND(group_no / 20)` will aggregate results, such that each resulting row will contain data from a single file (grouped by ID), and contains the data for n matches within a 20-word range (grouped by ROUND(group_no / 20)) in the source text. 
+- The `ORDER BY COUNT(*) DESC, min_pos ASC` term will sort results such that the word ranges with the highest density of matches will come first, and otherwise results will be ordered by their appearance in the source text.
+
+Examining our exploratory query:
+| id |match\_count |min\_pos |max\_pos |strings\_to\_replace |content\_to\_highlight |
+| --- | --- | --- | --- | --- | --- |
+| 46250 |2 |4 |10 |best of times, &#124; worst |It was the best of times, it was the worst of times, it was the |
+| 46250 |1 |8481 |8481 |worst |now\! The best and the worst are known to you, now. |
+| 46250 |1 |12687 |12687 |worst |dear miss\! Courage\! Business\! The worst will be over in a |
+| 46250 |1 |12703 |12703 |worst |the room\- door, and the worst is over. Then, all the |
+

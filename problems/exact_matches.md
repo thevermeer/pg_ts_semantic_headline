@@ -129,12 +129,12 @@ Producing:
 ```
   lex | pos_in_haystack | range_start 
 ---------------------------------------
-find	  1	  -1
-find	  7	   5
+find	  1	    -1
+find	  7      5
 find	 17 	15
 needl	 10 	10
-needl	  5	   5
-needl	 15	  15
+needl	  5	     5
+needl	 15	    15
 ```
 
 Here, there are 2 groups of matches:
