@@ -375,7 +375,41 @@ After: SELECT to_tsvector(prepare_text_for_tsvector('on seventy power-rules,  --
 ```
 This may prove problematic in some contexts, however we can see that the resultant vector is freed from the expansion of character-delimited terms, and this will allow us to correctly position fuzzy matches against the exact text, reduced and returned from `prepare_text_for_tsvector`.
 
+### Function to repair treated source text
+The `prepare_text_for_tsvector` function above is preparing text by breaking apart special character-delimited words by splitting on the special chararter and inserting a bell character followed by a space into the string. The bell character is an invisible charater that should be a relatively safe means of identifying treated regions of the document. The insertion of the space is to prevent various stemming parser from dividing the character-delimited word intto more than 2 terms, thereby breaking the actual position indexing of words in the TSVector. In our methodology, we index by inserting this character sequence into both needle and haystack. 
+
+Here, we provide a simple helper funciton to remove the bell character + space sequence, for the purposes of presentation:
+```
+CREATE OR REPLACE FUNCTION prepare_text_for_presentation (input_text TEXT)
+RETURNS TEXT AS
+$$
+BEGIN
+	RETURN (SELECT regexp_replace(input_text, E'\u0001 ', '', 'g'));
+END;
+$$
+STABLE
+LANGUAGE plpgsql;
+```
+and thus:
+```
+SELECT 'character-split' AS given,
+       TO_TSVECTOR('character-split') AS untreated_tsv,
+       prepare_text_for_tsvector('character-split'),
+       TO_TSVECTOR(prepare_text_for_tsvector('character-split')),
+	   -- Undo the bell-char + space indexing features:
+       prepare_text_for_presentation(prepare_text_for_tsvector('character-split'));
+```
+gives us:
+| given |untreated\_tsv |prepare\_text\_for\_tsvector |to\_tsvector |prepare\_text\_for\_presentation |
+| --- | --- | --- | --- | --- |
+| character\-split |'charact':2 'character\-split':1 'split':3 |character\- split |'charact':1 'split':2 |character\-split |
+
+allowing us to return text to the user without internal indexing features.
+
+
+## Revisiting Exact Matches with text prepared for indexing
 With that, let's apply `prepare_text_for_tsvector` to BOTH the needle and haystack and see how effectively our scrubbing on the string has been:
+
 #### Example 2 revisited:
 ```
 SELECT ts_exact_phrase_matches(
