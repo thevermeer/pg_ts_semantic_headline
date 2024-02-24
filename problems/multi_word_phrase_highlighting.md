@@ -4,10 +4,11 @@ For multi-word search terms, only the single words that comprise the search term
 ```
 SELECT ts_headline('search is separate from term and then combined in a search term', 
                    to_tsquery('search<->term'));
-
-::>
-<b>search</b> is separate from <b>term</b> and then combined in a <b>search</b> <b>term</b>
 ```
+| ts\_headline |
+| --- |
+| \<b\>search\</b\> is separate from \<b\>term\</b\> and then combined in a \<b\>search\</b\> \<b\>term\</b\> |
+
 In this case, the desired result is that the phrase, in its full form, is highlighted as a single term. That is, `<b>search</b> <b>term</b>` should be returned as `<b>search term</b>`:
 ```
 <b>search</b> is separate from <b>term</b> and then combined in a <b>search term</b>
@@ -17,10 +18,11 @@ This is particularly important when highlighting multi-word search terms that in
 ```
 SELECT ts_headline('Do not underestimate the power of the pen in changing the world.', 
                    to_tsquery('power<->of<->the<->pen'));
-
-::>
-Do not underestimate the <b>power</b> of the <b>pen</b> in changing the world.
 ```
+| ts\_headline |
+| --- |
+| Do not underestimate the \<b\>power\</b\> of the \<b\>pen\</b\> in changing the world. |
+
 However, we want the entire phrase highlighted and wrapped in a single tag, like so:
 ```
 Do not underestimate the <b>power of the pen</b> in changing the world.
@@ -155,9 +157,10 @@ Using a query like `to_tsquery('needles | (friend<3>people & !(rub<2>life)) | po
 SELECT replace(querytree(to_tsquery('needles | (friend<3>people & !(rub<2>life)) | power<2>positive'))::TEXT, '<->', '<1>');
 ```
 produces:
-```
-'needl' | 'friend' <3> 'peopl' | 'power' <2> 'posit'
-```
+| replace |
+| --- |
+| 'needl' &#124; 'friend' \<3\> 'peopl' &#124; 'power' \<2\> 'posit' |
+
 Note above that we are removing the term negated with the `!` operator.
 
 Next, for the purpose of highlighting, we can assume that brackets contained within TSQueries can be ignored, and we are only after the phrases therein.
@@ -166,16 +169,15 @@ With that in mind we split our TSQuery string into a table, splitting on either 
 
 To demonstrate:
 ```
-SELECT regexp_split_to_table(replace(querytree('power | (friend<19>people & !(rub<2>life)) | power<2>positive')::TEXT, '<->', '<1>'), '\&|\|')
+SELECT regexp_split_to_table(replace(querytree('power | (friend<19>people & !(rub<2>life)) | power<2>positive')::TEXT, '<->', '<1>'), '\&|\|');
 ```
 produces:
-```
- phrase_query
---------------
- 'power'  
-  'friend' <19> 'people'
-  'power' <2> 'positive' 
-```
+| regexp\_split\_to\_table |
+| --- |
+| 'power'  |
+|  'friend' \<19\> 'people'  |
+|  'power' \<2\> 'positive' |
+
 ### The replace_multiple_strings function
 For each one of the phrases in the resulting table, we want to replace the distances terms `<n>` with n-1 dummy terms. Due to the limitations of PGSQL's regexp_replace function we cannot directly cast the string matched to the INTEGER value of n, so instead we are going to have to use regexp_matches and then write a crafty little function that accepts a source TEXT string, a TEXT[] array of strings to find, and a TEXT[] array of replacement strings.
 
@@ -204,39 +206,46 @@ That should be relatively straightforward:
 SELECT replace_multiple_strings('we are never, never, never getting back together', 
                                 ARRAY['never', 'getting', 'back', 'together'], 
                                 ARRAY['always', 'giving', 'friends', 'oranges']);
-::>
-we are always, always, always giving friends oranges
 ```
+| replace\_multiple\_strings |
+| --- |
+| we are always, always, always giving friends oranges |
+
 
 From this, we are going to use `regexp_matches` to acrete the `<n>` distance terms and replace them with n-1 dummy entries, and cast that into a TSVECTOR:
 ```
-to_tsvector((SELECT replace_multiple_strings(phrase_query, 
-                                             array_agg('<' || g[1] || '>'), 
-                                             array_agg(REPEAT(' xdummywordx ', g[1]::SMALLINT - 1)))
-             FROM regexp_matches(phrase_query, '<(\d+)>', 'g') AS matches(g)))
+SELECT to_tsvector((SELECT replace_multiple_strings(phrase_query, 
+                                                    array_agg('<' || g[1] || '>'), 
+                                                    array_agg(REPEAT(' xdummywordx ', g[1]::SMALLINT - 1)))
+                    FROM regexp_matches(phrase_query, '<(\d+)>', 'g') AS matches(g))) as phrase_vec,
+       phrase_query::TSQUERY
+FROM (SELECT regexp_split_to_table('power | (friend<4>people) | power<2>positive', '\&|\|') AS phrase_query);
 ```
 produces:
-```
- phrase_vec | phrase_query
----------------------------
- 'power':1 |'power' 
- 'friend':1 'peopl':5 'xdummywordx':2,3,4  | 'friend' <4> 'people' 
- 'posit':3 'power':1 'xdummywordx':2       | 'power' <2> 'positive' 
-```
-Note here that we are producig both the TSVector representation while preserving the TSQuery form of the phrase, however our 'xdummywordx' entries remain in the tsvector. Let's filter out the artificial terms by:
-1) setting the weight for all terms to A
-2) setting the weight for the dummy term as D
-3) filtering for only the remaining A-weighted terms
-4) remove all the weights
+
+| phrase\_vec |phrase\_query |
+| --- | --- |
+| 'power':1 |'power' |
+| 'friend':1 'peopl':5 'xdummywordx':2,3,4 |'friend' \<4\> 'people' |
+| 'posit':3 'power':1 'xdummywordx':2 |'power' \<2\> 'positive' |
+
+Note here that we are producing both the TSVector representation while preserving the TSQuery form of the phrase, however our 'xdummywordx' entries remain in the tsvector. Let's filter out the artificial terms by:
+1) stemming our `xdummywordx` term to its lexeme, given an unknown default language
+2) setting the weight for all terms to A
+3) setting the weight for the dummy term as D
+4) filtering for only the remaining A-weighted terms
+5) remove all the weights
 
 That looks like:
 ```
 SELECT setweight(ts_filter(setweight(setweight(phrase_vec, 'A'), 
                                      'D',
-                                     ARRAY['xdummywordx']), 
+                                     tsvector_to_array('xdummywordx')), 
                            '{a}'), 
                  'D') AS phrase_vector
 ```
+
+Applying that all together
 
 ### The ts_query_to_ts_vector function
 Here's the function fully assembled:
@@ -287,27 +296,27 @@ In the _Retrieveing Exact Matches from PostgreSQL Text Search_ document , we bro
 For our purposes now, we will bring our new `ts_query_to_ts_vector` function together with `ts_vector_to_table` for further decompose our TSQuery into a table. We are taking this path because we want to maintain the relative lexeme positions of each of the n phrases contained in the TSQuery; the built-in TSVector concatenate function will NOT preserve the relative positions of the second, concatenated vector, shifting them to the positions AFTER the last lexeme in the first vector. Witness:
 ```
 SELECT * FROM ts_vector_to_table(TO_TSVECTOR('first second third') || TO_TSVECTOR('one two three'));
-::>
- lex | pos 
-------------
- first | 1 
- second | 2 
- third | 3 
- one | 4 
- two | 5 
- three | 6 
 ```
+| lex |pos |
+| --- | --- |
+| first |1 |
+| second |2 |
+| third |3 |
+| one |4 |
+| two |5 |
+| three |6 |
+
+
 Semantically, this represent a single, linear phrase of 6 words. What we actually want is EITHER 'first' OR 'one' to occupy position 1, like so:
-```
- lex | pos 
-------------
- first | 1 
- second | 2 
- third | 3 
- one | 1 
- two | 2 
- three | 3 
-```
+| lex |pos |
+| --- | --- |
+| first |1 |
+| second |2 |
+| third |3 |
+| one |1 |
+| two |2 |
+| three |3 |
+
 
 ### The ts_query_to_table function
 Keeping the above in mind, we bring together our TSQuery decomposed into a table of TSVectors, with our function that decomposes a TSVector into a table of lexemes and their positions. This gives us:
@@ -334,16 +343,15 @@ With that, from the example immediately above:
 SELECT * FROM ts_query_to_table('first<->second<->third|one<->two<->three');
 ```
 Produces:
-```
- phrase_vector |  phrase_query |  lexeme |  pos 
---------------------------------------------
- 'first':1 'second':2 'third':3 |'first' \<\-\> 'second' \<\-\> 'third' | first  | 1 
- 'first':1 'second':2 'third':3 |'first' \<\-\> 'second' \<\-\> 'third' | second | 2 
- 'first':1 'second':2 'third':3 |'first' \<\-\> 'second' \<\-\> 'third' | third  | 3 
- 'one':1 'three':3 'two':2      |'one' \<\-\> 'two' \<\-\> 'three'      | one    | 1 
- 'one':1 'three':3 'two':2      |'one' \<\-\> 'two' \<\-\> 'three'      | two    | 2 
- 'one':1 'three':3 'two':2      |'one' \<\-\> 'two' \<\-\> 'three'      | three  | 3 
-```
+| phrase\_vector |phrase\_query |lexeme |pos |
+| --- | --- | --- | --- |
+| 'first':1 'second':2 'third':3 |'first' \<\-\> 'second' \<\-\> 'third' |first |1 |
+| 'first':1 'second':2 'third':3 |'first' \<\-\> 'second' \<\-\> 'third' |second |2 |
+| 'first':1 'second':2 'third':3 |'first' \<\-\> 'second' \<\-\> 'third' |third |3 |
+| 'one':1 'three':3 'two':2 |'one' \<\-\> 'two' \<\-\> 'three' |one |1 |
+| 'one':1 'three':3 'two':2 |'one' \<\-\> 'two' \<\-\> 'three' |two |2 |
+| 'one':1 'three':3 'two':2 |'one' \<\-\> 'two' \<\-\> 'three' |three |3 |
+
 
 ## Bringing together Semantic TSQuery Headlines
 Jumping back to our previous attempt at phrase highlighting, we examine the `ts_phrase_headlines` function:
@@ -457,6 +465,7 @@ $$
 STABLE
 LANGUAGE plpgsql;
 ```
+
 Running the function on a single row in our `files` table, we see:
 ```
 SELECT found.* 
@@ -464,12 +473,10 @@ FROM (SELECT * FROM files LIMIT 1),
      ts_query_matches(content_arr, content_tsv, to_tsquery('best<2>time|worst<2>time')) AS found;
 ```
 Producing:
-```
- words | tsquery | group_no | start_pos | end_pos 
----------------------------------------------------------
-| best of times,  | 'best' <2> 'time' |  4 |  4 |  6 
-| worst of times, |'worst' <2> 'time' | 10 | 10 | 12 
-```
+| words |tsquery |group\_no |start\_pos |end\_pos |
+| --- | --- | --- | --- | --- |
+| best of times, |'best' \<2\> 'time' |4 |4 |6 |
+| worst of times, |'worst' \<2\> 'time' |10 |10 |12 |
 
 That is a simple demonstration of `ts_query_matches` returning the exact matches, phrase queries, and the start/end position of the terms.
 In less ideal situations, we can see that a more complex search yields a variety of results:
@@ -489,14 +496,11 @@ FROM (SELECT * FROM files LIMIT 1),
                       to_tsquery('(swallow<3>london<2>westminster|king<2>queen) & (worst<2>times)')) AS found;
 ```
 Gives us:
-```
- words | tsquery | group_no | start_pos | end_pos 
---------------------------------------------------
-| worst of times,                          |'worst' \<2\> 'time'                       |   10 |   10 |   12 
-| swallowing up of London and Westminster. |'swallow' \<3\> 'london' \<2\> 'westminst' |  247 |  247 |  252 
-| king, the queen,                         |'king' \<2\> 'queen'                       | 7835 | 7835 | 7837 
-
-```
+| words |tsquery |group\_no |start\_pos |end\_pos |
+| --- | --- | --- | --- | --- |
+| worst of times, |'worst' \<2\> 'time' |10 |10 |12 |
+| swallowing up of London and Westminster. |'swallow' \<3\> 'london' \<2\> 'westminst' |247 |247 |252 |
+| king, the queen, |'king' \<2\> 'queen' |7835 |7835 |7837 |
 
 Putting those pieces together, we now have a function that can retrieve the positions and exact match text of complex TSQuery statements; with the word positions and the exact matches we will be able to formulate, aggregate and regexp_replace our way towards a replacement for `ts_headline`.
 
