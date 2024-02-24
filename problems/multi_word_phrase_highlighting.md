@@ -1,5 +1,4 @@
-# Highlightling multiple. multi-word phrases
-
+# Highlightling multiple, multi-word phrases in a TSQuery
 For multi-word search terms, only the single words that comprise the search term are highlighted. Combining this with the first issue (ts_headline returns passages that do NOT contain the searched phrase), we will display highlights that do not fully demonstrate the phrase semantics of search applied. For instance:
 ```
 SELECT ts_headline('search is separate from term and then combined in a search term', 
@@ -245,10 +244,31 @@ SELECT setweight(ts_filter(setweight(setweight(phrase_vec, 'A'),
                  'D') AS phrase_vector
 ```
 
-Applying that all together
+Applying that all together, we will end up with resultant TSVectors that contain only the lexemes from the search pattern, like so:
+```
+SELECT setweight(ts_filter(setweight(setweight(phrase_vec, 'A'), 
+                                          'D',
+                                          ARRAY['xdummywordx']), 
+                                '{a}'), 
+                      'D') AS phrase_vector, 
+			phrase_query
+FROM (SELECT to_tsvector((SELECT replace_multiple_strings(phrase_query, 
+                                                          array_agg('<' || g[1] || '>'), 
+                                                          array_agg(REPEAT(' xdummywordx ', g[1]::SMALLINT - 1)))
+                          FROM regexp_matches(phrase_query, '<(\d+)>', 'g') AS matches(g))) as phrase_vec,
+             phrase_query::TSQUERY
+      FROM (SELECT regexp_split_to_table('power | (friend<4>people) | power<2>positive', '\&|\|') AS phrase_query));
+```
+
+| phrase\_vector |phrase\_query |
+| --- | --- |
+| 'power':1 |'power' |
+| 'friend':1 'peopl':5 |'friend' \<4\> 'people' |
+| 'posit':3 'power':1 |'power' \<2\> 'positive' |
+
 
 ### The ts_query_to_ts_vector function
-Here's the function fully assembled:
+Here's the function, fully assembled:
 ```
 CREATE OR REPLACE FUNCTION ts_query_to_ts_vector(input_query TSQUERY)
 RETURNS TABLE(phrase_vector TSVECTOR, phrase_query TSQUERY) AS
@@ -281,13 +301,12 @@ All together, `ts_query_to_ts_vector` accepts a TSQuery and converts it into a t
 SELECT *  FROM ts_query_to_ts_vector(to_tsquery('power | (friend<19>people & !(rub<2>life)) | power<2>positive'));
 ```
 Produces:
-```
- phrase_vector |  phrase_query 
--------------------------------
- 'power':1              |  'power' 
- 'friend':1 'peopl':20  |  'friend' <19> 'peopl' 
- 'posit':3 'power':1    |  'power' <2> 'posit' 
-```
+| phrase\_vector |phrase\_query |
+| --- | --- |
+| 'power':1 |'power' |
+| 'friend':1 'peopl':20 |'friend' \<19\> 'peopl' |
+| 'posit':3 'power':1 |'power' \<2\> 'posit' |
+
 
 We now have the ability to convert a TSQuery into a TSVector. Based on the techniques developed in [[Retrieveing Exact Matches from PostgreSQL Text Search](https://github.com/thevermeer/postgresql_semantic_tsheadline/blob/main/problems/exact_matches.md)] and streamlined in [[Efficient Content Retrieval](https://github.com/thevermeer/postgresql_semantic_tsheadline/blob/main/problems/efficient_content_retrieval.md)], we will JOIN the needle and haystack TSVectors and determine overlaps. The key difference is that we are now processing multiple multi-words search phrases; in doing that, we are aiming at a single pass join, and not devolving into a FOR loop.
 
@@ -423,7 +442,7 @@ The purpose of the `ts_query_matches` function is to determine the matching posi
 The function accepts:
 - `haystack_arr` as an ordered array of words, as they appear in the document, AFTER the source string was treated with the `prepare_text_for_tsvector` string cleaning function
 - content_tsv as the TSVector rendered from the content, again, AFTER treatment with `prepare_text_for_tsvector` to ensure that the "haystack" has been cleared of words delimited with special characters, thus preserving the word positions in the TSVector after lexizing and stemming.
-- `search_query` as  TSQuery statement; that statement can include multiple phrases separated by OR, AND and NOT `|, &, !` operators, brackets, and 
+- `search_query` as  TSQuery statement; that statement can include multiple phrases separated by OR, AND and NOT `|, &, !` operators, brackets, and will be divided such that the brackets are ignored, and the logical operators are treated as seperators between phrases.
 
 ```
 CREATE OR REPLACE FUNCTION ts_query_matches(haystack_arr TEXT[], content_tsv TSVECTOR, search_query TSQUERY)
@@ -487,7 +506,7 @@ FROM (SELECT * FROM files LIMIT 1),
 ```
 Returns 48 results (NOT listed :)) for a single document, and requires ~55ms per row to process. Thus, inside of our function the `LIMIT 5` is an arbitrary and ultimately configurable, in order to balance product and performance needs. _Do we need all 48 examples of a query within a text?_ If not, we will impose a limit.
 
-Nonetheless, consider the results of a more interesting query:
+Nonetheless, consider the results of a more interesting query string, `(swallow<3>london<2>westminster|king<2>queen) & (worst<2>times)`:
 ```
 SELECT found.* 
 FROM (SELECT * FROM files LIMIT 1), 
@@ -504,7 +523,7 @@ Gives us:
 
 Putting those pieces together, we now have a function that can retrieve the positions and exact match text of complex TSQuery statements; with the word positions and the exact matches we will be able to formulate, aggregate and regexp_replace our way towards a replacement for `ts_headline`.
 
-## The ts_semantic_headlines
+## The ts_semantic_headlines function
 In order to culminate the progress we have made in searching for TSQuery patterns in TSVectors, and as we can now return the exact positions and strings from compound, multi-phrase TSQueries, aggregate matches in close proximity to each other using `ts_query_exact_matches`, we are ready to aggregate and sort match ranges, and perform highlighting.
 
 Consider the following query that SELECTS from the files table, JOINs to the table/recordset returned by `ts_query_matches`; in this query:
@@ -513,10 +532,134 @@ Consider the following query that SELECTS from the files table, JOINs to the tab
 - The `ORDER BY COUNT(*) DESC, min_pos ASC` term will sort results such that the word ranges with the highest density of matches will come first, and otherwise results will be ordered by their appearance in the source text.
 
 Examining our exploratory query:
+```
+SELECT id, 
+       COUNT(*) AS match_count,
+       MIN(start_pos) AS min_pos, 
+       MAX(end_pos) AS max_pos,
+       STRING_AGG(words, '|') AS strings_to_replace,
+       ARRAY_TO_STRING(content_arr[MIN(start_pos)- 5:MAX(end_pos)+5], ' ') AS content_to_highlight    
+FROM files, 
+     (SELECT to_tsquery('best<2>time|worst') AS value) as q, 
+     ts_query_matches(content_arr, content_tsv, q.value) AS phrases
+WHERE id = (SELECT MIN(ID) FROM files)
+GROUP BY id, ROUND(group_no / 20)
+ORDER BY COUNT(*) DESC, min_pos ASC;
+```
+
+Produces:
 | id |match\_count |min\_pos |max\_pos |strings\_to\_replace |content\_to\_highlight |
 | --- | --- | --- | --- | --- | --- |
 | 46250 |2 |4 |10 |best of times, &#124; worst |It was the best of times, it was the worst of times, it was the |
 | 46250 |1 |8481 |8481 |worst |now\! The best and the worst are known to you, now. |
 | 46250 |1 |12687 |12687 |worst |dear miss\! Courage\! Business\! The worst will be over in a |
 | 46250 |1 |12703 |12703 |worst |the room\- door, and the worst is over. Then, all the |
+
+In our result set, we see that:
+- `min_pos` is the first matching word found in the range.
+- `max_pos` is the last matching word found in the range, though this should not be confused with the last word of the pattern that begins at `min pos`; that is both min_pos and max_pos are aggregated across multiple matches in the range
+- `strings_to_replace` is an aggregated string of each of the exact terms found and to be highlighted. the match patterns are delinieated with a `|` which is treated as a logical OR in regexp_replace evaluation, in the next step.
+- `content_to_highlight` is a section of the source content, ranging (arbitrarily, for now) from 5 words before `min_pos` to 5 words after `max_pos`
+
+The next step is to take the above recordset, perform `regexp_replace` on the `content_to_highlight` column, replacing `strings_to_replace` with the regex patten that wraps the found string in `<b>` tags. (Again, we will make the `<b>` tag configurable later.) Once we have replaced the tags, we will again aggregate our result-set into a single string, where each range will produce a `fragment` in terms equivalent to the built-in `ts_headline` options parameter.
+
+
+First, doing away with returning group information of file id, we move towards creating our final string. First, we perform the highlighting via `regexp_replace`:
+```
+SELECT REGEXP_REPLACE(' ' || ARRAY_TO_STRING(content_arr[MIN(start_pos)- 5:MAX(end_pos)+5], ' ') || ' ', 
+                      E' (' || STRING_AGG(words, '|') || ') ', 
+                      E'<b>\\1</b>', 'g') AS highlighted_text   
+FROM files, 
+     (SELECT to_tsquery('best<2>time|worst') AS value) as q, 
+     ts_query_matches(content_arr, content_tsv, q.value) AS phrases
+WHERE id = (SELECT MIN(ID) FROM files)
+GROUP BY id, ROUND(group_no / 20)
+ORDER BY COUNT(*) DESC, ROUND(group_no / 20) ASC;
+```
+This produces:
+| highlighted\_text |
+| --- |
+|  It was the\<b\>best of times,\</b\>it was the\<b\>worst\</b\>of times, it was the  |
+|  now\! The best and the\<b\>worst\</b\>are known to you, now.  |
+|  dear miss\! Courage\! Business\! The\<b\>worst\</b\>will be over in a  |
+|  the room\- door, and the\<b\>worst\</b\>is over. Then, all the  |
+
+As we cannot nest aggregate functions, we need to nest our SELECT statements, in order to produce a single string of multiple fragments/passages as a result:
+```
+SELECT STRING_AGG(highlighted_text, ' ... ') as headline
+FROM (SELECT REGEXP_REPLACE(' ' || ARRAY_TO_STRING(content_arr[MIN(start_pos)- 5:MAX(end_pos)+5], ' ') || ' ', 
+                            E' (' || STRING_AGG(words, '|') || ') ', 
+                            E'<b>\\1</b>', 'g') AS highlighted_text   
+      FROM files, 
+           (SELECT to_tsquery('best<2>time|worst') AS value) as q, 
+           ts_query_matches(content_arr, content_tsv, q.value) AS phrases
+      WHERE id = (SELECT MIN(ID) FROM files)
+      GROUP BY id, ROUND(group_no / 20)
+      ORDER BY COUNT(*) DESC, ROUND(group_no / 20) ASC);
+```
+which gives us:
+| headline |
+| --- |
+|  It was the\<b\>best of times,\</b\>it was the\<b\>worst\</b\>of times, it was the  ...  now\! The best and the\<b\>worst\</b\>are known to you, now.  ...  dear miss\! Courage\! Business\! The\<b\>worst\</b\>will be over in a  ...  the room\- door, and the\<b\>worst\</b\>is over. Then, all the  |
+
+The final step is to remove the bell-character + space that we have inserted for indexing. In you recall, we created the `prepare_text_for_presentation` function in the [[Repair treated source text](https://github.com/thevermeer/postgresql_semantic_tsheadline/blob/main/problems/exact_matches.md#function-to-repair-treated-source-text)] section. Let's use it here:
+
+```
+SELECT prepare_text_for_presentation(STRING_AGG(highlighted_text, ' ... ')) 
+FROM (SELECT REGEXP_REPLACE(' ' || ARRAY_TO_STRING(content_arr[MIN(start_pos)- 5:MAX(end_pos)+5], ' ') || ' ', 
+                            E' (' || STRING_AGG(words, '|') || ') ', 
+                            E'<b>\\1</b>', 'g') AS highlighted_text   
+      FROM files, 
+           (SELECT to_tsquery('best<2>time|worst') AS value) as q, 
+           ts_query_matches(content_arr, content_tsv, q.value) AS phrases
+      WHERE id = (SELECT MIN(ID) FROM files)
+      GROUP BY id, ROUND(group_no / 20)
+      ORDER BY COUNT(*) DESC, ROUND(group_no / 20) ASC);
+```
+
+| prepare\_text\_for\_presentation |
+| --- |
+|  It was the\<b\>best of times,\</b\>it was the\<b\>worst\</b\>of times, it was the  ...  now\! The best and the\<b\>worst\</b\>are known to you, now.  ...  dear miss\! Courage\! Business\! The\<b\>worst\</b\>will be over in a  ...  the room\-door, and the\<b\>worst\</b\>is over. Then, all the  |
+
+We can clearly see that we have something quite workable as a substitute for `ts_headline`.
+
+### Towards a replacement for ts_headline
+Let's bring this into a function and do away with the inner joins and grouping on the `files` table. Replacing and removing SELECT statements in favour of variables, our first version of our function should look like:
+```
+CREATE OR REPLACE FUNCTION ts_query_headline(haystack_arr TEXT[], content_tsv TSVECTOR, search_query TSQUERY)
+RETURNS TEXT AS
+$$
+BEGIN
+    RETURN (
+		SELECT prepare_text_for_presentation(STRING_AGG(highlighted_text, ' ... '))
+		FROM (SELECT REGEXP_REPLACE(ARRAY_TO_STRING(haystack_arr[MIN(start_pos)- 5:MAX(end_pos)+5], ' '), 
+				                    E' (' || STRING_AGG(words, '|') || ') ', 
+				                    E' <b>\\1</b> ', 'g') AS highlighted_text
+		      FROM ts_query_matches(haystack_arr, content_tsv, search_query)
+			  GROUP BY ROUND(group_no / 30)
+			  ORDER BY COUNT(*) DESC, ROUND(group_no / 30) ASC));
+END;
+$$
+STABLE
+LANGUAGE plpgsql;
+```
+
+Calling our new function on a single file, we see:
+```
+SELECT ts_query_headline(content_arr, content_tsv, to_tsquery('arrange<5>swallow<3>london<2>westminster')) FROM files LIMIT 1;
+```
+| ts\_query\_headline |
+| --- |
+| sublime appearance by announcing that \<b\>arrangements were made for the swallowing up of London and Westminster.\</b\> Even the Cock\-lane ghost |
+
+Querying `'best<2>time|worst'`, we see:
+| ts\_query\_headline |
+| --- |
+| It was the \<b\>best of times,\</b\> it was the \<b\>worst\</b\> of times, it was the ... now\! The best and the \<b\>worst\</b\> are known to you, now. ... dear miss\! Courage\! Business\! The \<b\>worst\</b\> will be over in a ... the room\-door, and the \<b\>worst\</b\> is over. Then, all the |
+
+Querying 'king | queen', we get:
+| ts\_query\_headline |
+| --- |
+| comparison only. There were a \<b\>king\</b\> with a large jaw and a \<b\>queen\</b\> with a plain face, on the throne of England; there were a \<b\>king\</b\> with a large jaw and ... a large jaw and a \<b\>queen\</b\> with a fair face, on ... his place. “Gentlemen\! In the \<b\>king’\</b\> s name, all of you\!” |
+
 
