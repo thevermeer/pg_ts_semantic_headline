@@ -54,22 +54,22 @@ The `ts_semantic_headline` function will highlight matching, multi-word phrase p
 ```
 SELECT 
 ts_semantic_headline('I can highlight search results as phrases, and not just single terms', ts_prepare_query('search<3>phrases')),
-ts_headline('I can highlight search results as phrases, and not just single terms', ts_prepare_query('search<3>phrases'));
+ts_headline('I cannot highlight search results as phrases, and only single terms', ts_prepare_query('search<3>phrases'));
 ```
 | ts\_semantic\_headline |ts\_headline |
 | --- | --- |
-| I can highlight \<b\>search results as phrases,\</b\> and not just single terms |I can highlight \<b\>search\</b\> results as \<b\>phrases\</b\>, and not just single terms |
+| I can highlight \<b\>search results as phrases,\</b\> and not just single terms |I cannot highlight \<b\>search\</b\> results as \<b\>phrases\</b\>, and only single terms |
 
 ### Partial Matches are NOT highlighted
 The built-in `ts_headline` function will not respect the phrase operators within a TSQuery, and will highlight single words and partially matching terms. `ts_semantic_headline` enforces the notion that all highlighted matches' content will abide the semantics of the TSQuery:
 ```
 SELECT 
 ts_semantic_headline('phrase matches are highlighted, partial matches are not', ts_prepare_query('phrase<->match')),
-ts_headline('phrase matches are highlighted, partial matches are not', ts_prepare_query('phrase<->match'));
+ts_headline('phrase matches are highlighted, partial matches are as well', ts_prepare_query('phrase<->match'));
 ```
 | ts\_semantic\_headline |ts\_headline |
 | --- | --- |
-| \<b\>phrase matches\</b\> are highlighted, partial matches are not |\<b\>phrase\</b\> \<b\>matches\</b\> are highlighted, partial \<b\>matches\</b\> are not |
+| \<b\>phrase matches\</b\> are highlighted, partial matches are not |\<b\>phrase\</b\> \<b\>matches\</b\> are highlighted, partial \<b\>matches\</b\> are as well |
 
 ### Performs 5x-10x Faster than ts_headline (with pre-computed TSVector and TEXT[] columns)
 We identified that full-text content recall is slow to do adhoc, because the retrieval requires manipulating and slicing large strings. At the same time, the built-in `ts_headline` function performs this reduction of text on every pass. If we have a table with a pre-computed TSVector of the source text AND a pre-computed array of words as they appear in the TSVector (delimited by spaces in the source), we can radically improve the performance to content recall in postgreSQL full-text search 
@@ -96,3 +96,46 @@ EXPLAIN ANALYZE SELECT ts_headline(content, ts_prepare_query('best<2>time')) FRO
 | Seq Scan on files  \(cost=0.00..53.00 rows=100 width=32\) \(actual time=60.714..5724.190 rows=100 loops=1\) |
 | Planning Time: 0.115 ms |
 | Execution Time: 5724.348 ms |
+
+### Improves ts_headline semantics without additional indices or pre-computed columns
+If you do not want to pre-compute (or re-compute) a TSVector for search, or realizing a TEXT[] array of a long string seems too expensive, we also have a flavour of `ts_semantic_headline` that has the same method signature as the built-in `ts_headline` function, and uses function that under-the-hood to perform semantically-correct content highlighting of phrases, highlighting multi-word phrases and eliminating partial matches.
+
+## Usage
+
+### Parsing Documents
+In order to perform fast content retrieval, we are going to treat our source text such that the positions within our language-stemmed TSVector will align with the word positions in our TEXT[] array of words. In order to do that, we will use the `ts_prepare_text_for_tsvector` function, which accpets TEXT, cleans the string of special-character delimited words, and returns text:
+```
+ts_prepare_text_for_tsvector(TEXT) RETURNS TEXT
+```
+As an example, `SELECT ts_prepare_text_for_tsvector('hyphen-delimited and other.such~terms are treated');` will return:
+| ts\_prepare\_text\_for\_tsvector |
+| --- |
+| hyphen\- delimited and other. such~ terms are treated |
+
+Note that the ` ` (Bell Character + SPACE) have been inserted to break apart special character delimited terms, in order to maintain 'word' positionality between the TSVector and content arrays. 
+
+With that, in order to render a conformant TSVector, we will run:
+```
+SELECT TO_TSVECTOR(ts_prepare_text_for_tsvector('our content to index'));
+```
+In order to generate our precomputed TEXT[] array, we will do much the same:
+```
+SELECT regexp_split_to_array(ts_prepare_text_for_tsvector('our content to index'), '[\s]+');
+```
+Finally, if we are realizing the TSVector and TEXT[] array to a lookup table, we can do both, in one step, in our trigger function:
+```
+CREATE OR REPLACE FUNCTION trg_update_content_tsv_and_arr()
+RETURNS TRIGGER AS $$
+DECLARE clean_text TEXT = = ts_prepare_text_for_tsvector(NEW.content);
+BEGIN
+    NEW.content_tsv       := to_tsvector(clean_text);   
+    NEW.content_arr       := regexp_split_to_array(clean_textt, '[\s]+');
+    RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+```
+
+### Parsing Queries
+TBD
+
+###
