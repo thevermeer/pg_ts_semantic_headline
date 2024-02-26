@@ -1,3 +1,5 @@
+
+
 CREATE OR REPLACE FUNCTION ts_query_matches(haystack_arr TEXT[], content_tsv TSVECTOR, search_query TSQUERY, match_limit INTEGER DEFAULT 5)
 RETURNS TABLE(words TEXT, ts_query TSQUERY, group_no SMALLINT, start_pos SMALLINT, end_pos SMALLINT) AS
 $$    

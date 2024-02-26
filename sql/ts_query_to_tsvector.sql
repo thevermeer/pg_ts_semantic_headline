@@ -1,15 +1,21 @@
--- Function: ts_query_to_ts_vector
+/*
+Function: ts_query_to_ts_vector
 
--- Accepts: 
--- - input_query TSQuery - a well-formed TSQuery that is may be complex, containg logical and phrase/distance operators
+Accepts: 
+- input_query TSQuery - a well-formed TSQuery that is may be complex, containing 
+  logical and phrase/distance operators
 
--- Returns a TABLE where each row contains:
--- - phrase_vector as a TSVector representation of a phrase
--- - phrase_query as a TSQuery representation of a phrase pattern
+Returns a TABLE where each row contains:
+- phrase_vector as a TSVector representation of a phrase
+- phrase_query as a TSQuery representation of a phrase pattern
 
--- In effect, this function considers a TSQuery to contain a list of phrase queries separated by brackets and logical operators.
--- Though negated terms are removed from the resulting table, other logical operators and brackets are ignored, and the table is then a representation of a list of phrase patterns in the query
+In effect, this function considers a TSQuery to contain a list of phrase queries 
+separated by brackets and logical operators.
 
+Though negated terms are removed from the resulting table, other logical operators 
+and brackets are ignored, and the table is then a representation of a list of 
+phrase patterns in the query
+*/
 CREATE OR REPLACE FUNCTION ts_query_to_ts_vector(input_query TSQUERY)
 RETURNS TABLE(phrase_vector TSVECTOR, phrase_query TSQUERY) AS
 $$
