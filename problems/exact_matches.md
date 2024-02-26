@@ -27,7 +27,7 @@ exacting, exactly, exact, exaction, exacts, exacted
 
 ## Setup 
 
-If you follow the [[Project Setup](https://github.com/thevermeer/postgresql_semantic_tsheadline/blob/main/setup.md)], you will have a data table with 10,000 rows, each containing a source text as well as a pre-realized TSVector representation of the content.
+If you follow the [[Project Setup](https://github.com/thevermeer/postgresql_semantic_tsheadline/blob/main/development_setup.md)], you will have a data table with 10,000 rows, each containing a source text as well as a pre-realized TSVector representation of the content.
 
 Given that the TSVector is computed and available is it possible to use the TSVector to determine the location (and thus text) of a phrase matching? 
 

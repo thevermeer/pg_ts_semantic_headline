@@ -35,7 +35,7 @@ Taking note of the various arguments and arities of the built_in `ts_headline` f
 Secondly, as `ts_headline` only highlights single words in a multi-word search term, we need a different way of matching and retrieving the multi-word search patterns and their location in the TSVector. In order to do this, we are going to write a function that accepts a phrase as a string and converts that phrase to a tsvector. In turn, we are going to use the query/needle TSVector to identify matching phrase patterns in the haystack TSVector.
 
 ### Function will expand on our efficient ts_exact_matches function
-Our work begins with the `ts_exact_phrase_matches` function that we created in this repo, and refined in [[Performant Exact Phrase Matches Function](https://github.com/thevermeer/postgresql_semantic_tsheadline/blob/main/problems/efficient_headlines.md#performant-exact-phrase-matches-function)]:
+Our work begins with the `ts_exact_phrase_matches` function that we created in this repo, and refined in [[Performant Exact Phrase Matches Function](https://github.com/thevermeer/postgresql_semantic_tsheadline/blob/main/problems/efficient_content_retrieval.md#performant-exact-phrase-matches-function)]:
 ```
 CREATE OR REPLACE FUNCTION ts_exact_phrase_matches(haystack_arr TEXT[], content_tsv TSVECTOR, user_search TEXT)
 RETURNS TABLE(positions TEXT) AS
