@@ -443,9 +443,10 @@ The function accepts:
 - `haystack_arr` as an ordered array of words, as they appear in the document, AFTER the source string was treated with the `prepare_text_for_tsvector` string cleaning function
 - content_tsv as the TSVector rendered from the content, again, AFTER treatment with `prepare_text_for_tsvector` to ensure that the "haystack" has been cleared of words delimited with special characters, thus preserving the word positions in the TSVector after lexizing and stemming.
 - `search_query` as  TSQuery statement; that statement can include multiple phrases separated by OR, AND and NOT `|, &, !` operators, brackets, and will be divided such that the brackets are ignored, and the logical operators are treated as seperators between phrases.
+- `match_limit` is the maximum number of matches to return, and parameterizes the arbitrary limit of retulning the first 5 results. This value is quite important in determining the overall performance cost of this function, and the forthcoming function that depends on it. That is, the larger this vallue becomes, the longer the overall runtime of the function.
 
 ```
-CREATE OR REPLACE FUNCTION ts_query_matches(haystack_arr TEXT[], content_tsv TSVECTOR, search_query TSQUERY)
+CREATE OR REPLACE FUNCTION ts_query_matches(haystack_arr TEXT[], content_tsv TSVECTOR, search_query TSQUERY, match_limit INTEGER DEFAULT 5)
 RETURNS TABLE(words TEXT, tsquery TSQUERY, group_no SMALLINT, start_pos SMALLINT, end_pos SMALLINT) AS
 $$    
 BEGIN
@@ -456,7 +457,9 @@ BEGIN
     (
         SELECT array_to_string(haystack_arr[first:last], ' ') as found_words,           
                query AS pq,
-               range_start
+               range_start,
+               first, 
+               last
         FROM (SELECT MIN(pos) AS first, 
                      MAX(pos) AS last, 
                      range_start AS range_start, 
@@ -477,7 +480,7 @@ BEGIN
         WHERE (last - first) = (SELECT MAX(pos) - MIN(pos) 
                                 FROM ts_query_to_table(query::TSQUERY))
         AND array_to_string(haystack_arr[first:last], ' ') @@ query::TSQUERY
-        LIMIT 5
+        LIMIT match_limit
    );
 END;
 $$
@@ -523,7 +526,7 @@ Gives us:
 
 Putting those pieces together, we now have a function that can retrieve the positions and exact match text of complex TSQuery statements; with the word positions and the exact matches we will be able to formulate, aggregate and regexp_replace our way towards a replacement for `ts_headline`.
 
-## The ts_semantic_headlines function
+## Developing the ts_semantic_headlines function
 In order to culminate the progress we have made in searching for TSQuery patterns in TSVectors, and as we can now return the exact positions and strings from compound, multi-phrase TSQueries, aggregate matches in close proximity to each other using `ts_query_exact_matches`, we are ready to aggregate and sort match ranges, and perform highlighting.
 
 Consider the following query that SELECTS from the files table, JOINs to the table/recordset returned by `ts_query_matches`; in this query:
@@ -626,7 +629,7 @@ We can clearly see that we have something quite workable as a substitute for `ts
 ### Towards a replacement for ts_headline
 Let's bring this into a function and do away with the inner joins and grouping on the `files` table. Replacing and removing SELECT statements in favour of variables, our first version of our function should look like:
 ```
-CREATE OR REPLACE FUNCTION ts_query_headline(haystack_arr TEXT[], content_tsv TSVECTOR, search_query TSQUERY)
+CREATE OR REPLACE FUNCTION ts_semantic_headline(haystack_arr TEXT[], content_tsv TSVECTOR, search_query TSQUERY)
 RETURNS TEXT AS
 $$
 BEGIN
@@ -662,4 +665,95 @@ Querying 'king | queen', we get:
 | --- |
 | comparison only. There were a \<b\>king\</b\> with a large jaw and a \<b\>queen\</b\> with a plain face, on the throne of England; there were a \<b\>king\</b\> with a large jaw and ... a large jaw and a \<b\>queen\</b\> with a fair face, on ... his place. “Gentlemen\! In the \<b\>king’\</b\> s name, all of you\!” |
 
+Oops! Our cleaning function is not properly wrapping our end delimiter of '</b>'. As we added the training space after the4 delimiter during text preparation, we need to improve our function to clean our output:
 
+### The prepare_text_for_presentation function (revised)
+
+Up to this point, be have only cleaned our inserted \u0001 (bell character) + SPACE as a string sequence. To better imporove our presentation above, we are going to expand the scope of cleaning up our bell character + space token, by cleaning the pattern `\u0001<\b> `, like so:
+```
+CREATE OR REPLACE FUNCTION prepare_text_for_presentation (input_text TEXT, end_delimiter TEXT DEFAULT '</b>')
+RETURNS TEXT AS
+$$
+BEGIN
+    input_text := regexp_replace(input_text, E'\u0001 ', '', 'g');
+    input_text := regexp_replace(input_text, E'\u0001(' || end_delimiter || ') ', E'\\2\\1', 'g');
+	RETURN input_text;
+END;
+$$
+STABLE
+LANGUAGE plpgsql;
+```
+
+Using this, we can better remove hidden bell caharacter and more importantly, their induced, trailing spaces, like so:
+```
+SELECT prepare_text_for_presentation(ts_new_headline('second-first-third first-second first-second', to_tsquery('first')));
+```
+| prepare\_text\_for\_presentation |
+| --- |
+| second\-\<b\>first\-\</b\>third \<b\>first\-\</b\>second \<b\>first\-\</b\>second |
+
+Great! we have gotten rid of all the characters used for indexing text, and can proceed to refining our `ts_query_headline` function.
+
+### Emulating ts_headline options
+Per the PostgreSQL documentation for [[ts_headline](https://www.postgresql.org/docs/16/textsearch-controls.html#TEXTSEARCH-HEADLINE)], we need to emulate the following options:
+>If an options string is specified it must consist of a comma-separated list of one or more option=value pairs. The available options are:
+- `MaxWords`, `MinWords` (integers): these numbers determine the longest and shortest headlines to output. The default values are 35 and 15.
+- `ShortWord` (integer): words of this length or less will be dropped at the start and end of a headline, unless they are query terms. The default value of three eliminates common English articles.
+- `HighlightAll` (boolean): if true the whole document will be used as the headline, ignoring the preceding three parameters. The default is false.
+- `MaxFragments` (integer): maximum number of text fragments to display. The default value of zero selects a non-fragment-based headline generation method. A value greater than zero selects fragment-based headline generation (see below).
+- `StartSel`, `StopSel` (strings): the strings with which to delimit query words appearing in the document, to distinguish them from other excerpted words. The default values are “<b>” and “</b>”, which can be suitable for HTML output.
+- `FragmentDelimiter` (string): When more than one fragment is displayed, the fragments will be separated by this string. The default is “ ... ”.
+
+Needless to say, there are strict expextations as to the format of the options string; we will parse the string into a json object, like so:
+```
+WITH options_map AS (SELECT json_object_agg(grp[1], COALESCE(grp[2], grp[3])) AS opt 
+                 FROM regexp_matches('Key1=Value1,Key2=Value2', '(\w+)=(?:"([^"]+)"|((?:(?![\s,]+\w+=).)+))', 'g') as matches(grp))
+SELECT opt->'Key1' as value FROM options_map;
+```
+and that gives us:
+| value |
+| --- |
+| "Value1" |
+
+With that we can incorporate the options into our function, by parsing the options string into a JSON map and then destructuring the map and using `COALESCE` to fall over to default values:
+```
+CREATE OR REPLACE FUNCTION ts_semantic_headline(haystack_arr TEXT[], content_tsv TSVECTOR, search_query TSQUERY, options TEXT DEFAULT '')
+RETURNS TEXT AS
+$$
+DECLARE
+    -- Parse Options string to JSON map --
+    opts          JSON    = (SELECT JSON_OBJECT_AGG(grp[1], COALESCE(grp[2], grp[3])) AS opt 
+                             FROM REGEXP_MATCHES(options, 
+                                                 '(\w+)=(?:"([^"]+)"|((?:(?![\s,]+\w+=).)+))', 
+                                                 'g') as matches(grp));
+    -- Options Map and Default Values --
+    tag_range     TEXT    = COALESCE(opts->>'StartSel', '<b>') || E'\\1' || COALESCE(opts->>'StopSel', '</b>');
+    min_words     INTEGER = COALESCE((opts->>'MinWords')::SMALLINT / 2, 10);
+    max_words     INTEGER = COALESCE((opts->>'MaxWords')::SMALLINT, 30);
+    max_offset    INTEGER = max_words / 2 + 1;
+    max_fragments INTEGER = COALESCE((opts->>'MaxFragments')::INTEGER, 1);
+BEGIN
+    RETURN (
+		SELECT prepare_text_for_presentation(STRING_AGG(highlighted_text,
+		                                                COALESCE(opts->>'FragmentDelimiter', '...')),
+		                                     COALESCE(opts->>'StopSel', '</b>'))
+		FROM (SELECT REGEXP_REPLACE(-- Aggregate the source text over a Range
+		                            ' ' || ARRAY_TO_STRING(haystack_arr[MIN(start_pos) - 
+                                                                        GREATEST((max_offset - (MAX(end_pos) - MIN(start_pos) / 2 + 1)), min_words): 
+		                                                                MAX(end_pos) + 
+                                                                        GREATEST((max_offset - (MAX(end_pos) - MIN(start_pos) / 2 + 1)), min_words)], 
+		                                                   ' ') || ' ', 
+				                    -- Capture Exact Matches over Range
+				                    E' (' || STRING_AGG(words, '|') || ') ', 
+				                    -- Replace with Tags wrapping Content
+				                    ' ' || tag_range || ' ', 
+				                    'g') AS highlighted_text
+		      FROM ts_query_matches(haystack_arr, content_tsv, search_query, max_fragments + 3)
+			  GROUP BY (group_no / (max_words + 1)) * (max_words + 1)
+			  ORDER BY COUNT(*) DESC, (group_no / (max_words + 1)) * (max_words + 1)
+			  LIMIT max_fragments));
+END;
+$$
+STABLE
+LANGUAGE plpgsql;
+```
