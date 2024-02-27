@@ -16,7 +16,8 @@ Though negated terms are removed from the resulting table, other logical operato
 and brackets are ignored, and the table is then a representation of a list of 
 phrase patterns in the query
 */
-CREATE OR REPLACE FUNCTION ts_query_to_ts_vector(input_query TSQUERY)
+
+CREATE OR REPLACE FUNCTION ts_query_to_ts_vector(config REGCONFIG, input_query TSQUERY)
 RETURNS TABLE(phrase_vector TSVECTOR, phrase_query TSQUERY) AS
 $$
 DECLARE
@@ -42,7 +43,19 @@ BEGIN
                                FROM regexp_matches(split_query, '<(\d+)>', 'g') AS matches(g))) as phrase_vec,
                   split_query::TSQUERY
            -- Splits Query as Text into a collection of phrases delimiter by AND/OR symbols
-           FROM (SELECT regexp_split_to_table(input_text, '\&|\|') AS split_query)));
+           FROM (SELECT regexp_split_to_table(input_text, '\&|\|') AS split_query) AS terms) AS termvec);
 END;
 $$
+STABLE
+LANGUAGE plpgsql;
+
+CREATE OR REPLACE FUNCTION ts_query_to_ts_vector(input_query TSQUERY)
+RETURNS TABLE(phrase_vector TSVECTOR, phrase_query TSQUERY) AS
+$$
+BEGIN
+   RETURN QUERY 
+   (SELECT * FROM ts_query_to_ts_vector(current_setting('default_text_search_config')::REGCONFIG, input_query));
+END;
+$$
+STABLE
 LANGUAGE plpgsql;
