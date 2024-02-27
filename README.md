@@ -74,7 +74,7 @@ ts_headline('phrase matches are highlighted, partial matches are as well', ts_pr
 ### Performs 5x-10x Faster than ts_headline (with pre-computed TSVector and TEXT[] columns)
 We identified that full-text content recall is slow to do adhoc, because the retrieval requires manipulating and slicing large strings. At the same time, the built-in `ts_headline` function performs this reduction of text on every pass. If we have a table with a pre-computed TSVector of the source text AND a pre-computed array of words as they appear in the TSVector (delimited by spaces in the source), we can radically improve the performance to content recall in postgreSQL full-text search 
 
-Though not required, if we pre-compute both the lookup index (TSVector) and the recall array (TEXT[]), we can perform semantically-correct content highlighting and recall roughly 10 times faster than using the buil-in `ts_headline` function. 
+Though not required, if we pre-compute both the lookup index (TSVector) and the recall array (TEXT[]), we can perform semantically-correct content highlighting and recall roughly 10 times faster than using the built-in `ts_headline` function. 
 
 Performing our search-and-recall across 100 documents, each with nearly the maximum number of words permitted in a TSVector,  we see:
 ```
@@ -112,7 +112,7 @@ As an example, `SELECT ts_prepare_text_for_tsvector('hyphen-delimited and other.
 | --- |
 | hyphen\- delimited and other. such~ terms are treated |
 
-Note that the ` ` (Bell Character + SPACE) have been inserted to break apart special character delimited terms, in order to maintain 'word' positionality between the TSVector and content arrays. 
+Note that the ` ` (Bell Character + SPACE) have been inserted to break apart special character-delimited terms, in order to maintain 'word' positionality between the TSVector and content arrays. 
 
 With that, in order to render a conformant TSVector, we will run:
 ```
@@ -136,6 +136,26 @@ $$ LANGUAGE plpgsql;
 ```
 
 ### Parsing Queries
-TBD
+The preparations that we make on the haystack TSVector also need to be made to the TSQuery.
 
-###
+Given the above section on _Parsing Documents_, for the purposes of our TSQuery, we are going to have to replace all special characters, as we do above, however, we will have to replace the characters with the TSQuery distance=1 operator, `<1>`. This will match the pattern of the Bell Character+SPACE inserted into the haystack, where the Bell Character is ignored when the TSVector is parsed and term is treated as 2 words. In terms of worldwide languages, this is probably a terrible idea and needs to be rethought out. For now, the goal is fast content retrieval, but do keep this in mind: Not all languages have space-delimited words, splitting on special; characters can either change or nullify meaning, amongst many other factors.
+
+With all of that said, we will treat the needle with the same preparaions as we do the haystack, but are required to preserve the logical special characters inside of the query.
+
+To render a TSQuery with compatible string preparations:
+```
+ts_prepare_query ([ config regconfig, ] query_string TEXT) RETURNS TSQUERY
+```
+
+Consider
+```
+SELECT 
+ts_prepare_query( 'seek-ing<2>find.ing<1>the<1>needle<3>in-fix'),
+to_tsquery('seek-ing<2>find.ing<1>the<1>needle<3>in-fix');
+```
+| ts\_prepare\_query |to\_tsquery |
+| --- | --- |
+| 'seek' \<\-\> 'ing' \<2\> 'find' \<\-\> 'ing' \<2\> 'needl' \<4\> 'fix' |'seek\-' \<\-\> 'seek' \<\-\> 'ing' \<2\> 'find.ing' \<2\> 'needl' \<3\> \( 'in\-fix' \<2\> 'fix' \) |
+
+
+### Highlighting Search Results
