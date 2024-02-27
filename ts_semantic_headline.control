@@ -1,5 +1,3 @@
 # TS Semantic Headlines extension
 comment = 'A phrase highlighting and improved semantics for ts_headline'
 default_version = '1.0'
-# cannot be relocatable because of use of @extschema@
-relocatable = false
