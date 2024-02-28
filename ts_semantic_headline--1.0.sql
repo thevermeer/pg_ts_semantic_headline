@@ -108,39 +108,26 @@ CREATE OR REPLACE FUNCTION ts_prepare_text_for_tsvector(result_string text)
 RETURNS text AS
 $$
 BEGIN
-    -- We perform the chararacter substitution twice to catch any terms with 
+     -- We perform the chararacter substitution twice to catch any terms with 
 	-- multiple character-delimiter substrings
-	result_string := regexp_replace(result_string, 
-	                                '(\w)([^[:alnum:]|\s]+)(\w)', 
-									E'\\1\\2\u0001 \\3', 
-									'g');
-	result_string := regexp_replace(result_string, 
-	                                '(\w)([^[:alnum:]|\s]+)(\w)', 
-									E'\\1\\2\u0001 \\3', 
-									'g');
-	-- Removes strings that do not contain character
-	result_string := regexp_replace(result_string, 
-	                                '(\s)([^[:alnum:]|\s]+)(\s)', 
-									E' ', 
-									'g');
-	-- Deduplicates whitespace into a single space
-	result_string := regexp_replace(result_string, 
-	                                E'[\\s]+', 
-									' ', 
-									'g');		    
+	result_string := regexp_replace(result_string, '(\w)([^\w+|\s]+)(\w)', E'\\1\\2\u0001 \\3', 'g');
+	result_string := regexp_replace(result_string, '(\w)([^\w+|\s]+)(\w)', E'\\1\\2\u0001 \\3', 'g');
+	-- Use ts_debug to decompose and recompose string - computationally expensive
+	result_string := (SELECT TRIM(STRING_AGG(CASE WHEN alias='blank' THEN E'\u0001' ELSE ' ' END || token, '')) 
+                      FROM (SELECT * FROM ts_debug('simple', result_string)) AS terms
+                      WHERE NOT(token IN (' ') AND token IS NOT NULL)); 
+	result_string := regexp_replace(result_string, '(\(|\)) ', E'\\1', 'g');
+ 	result_string := regexp_replace(result_string, '(\s)([^\w|\s]+)(\s)', E' ', 'g');	 	
 
-    RETURN result_string;
+
+	RETURN TRIM(result_string);
 END;
 $$
 STABLE
 LANGUAGE plpgsql;
 
 CREATE OR REPLACE FUNCTION ts_query_matches
-                           (config REGCONFIG,
-                            haystack_arr TEXT[], 
-                            content_tsv TSVECTOR, 
-                            search_query TSQUERY, 
-                            match_limit INTEGER DEFAULT 5)
+(config REGCONFIG, haystack_arr TEXT[], content_tsv TSVECTOR, search_query TSQUERY, match_limit INTEGER DEFAULT 5)
 RETURNS TABLE(words TEXT, 
               ts_query TSQUERY, 
               start_pos SMALLINT, 
@@ -184,10 +171,7 @@ LANGUAGE plpgsql;
 
 
 CREATE OR REPLACE FUNCTION ts_query_matches
-                           (haystack_arr TEXT[], 
-                            content_tsv TSVECTOR, 
-                            search_query TSQUERY, 
-                            match_limit INTEGER DEFAULT 5)
+(haystack_arr TEXT[], content_tsv TSVECTOR, search_query TSQUERY, match_limit INTEGER DEFAULT 5)
 RETURNS TABLE(words TEXT, 
               ts_query TSQUERY, 
               start_pos SMALLINT, 
@@ -195,7 +179,8 @@ RETURNS TABLE(words TEXT,
 $$    
 BEGIN
    RETURN QUERY
-    (SELECT ts_query_matches(current_setting('default_text_search_config')::REGCONFIG,
+    (SELECT *
+     FROM   ts_query_matches(current_setting('default_text_search_config')::REGCONFIG,
                              haystack_arr, 
                              content_tsv, 
                              search_query, 
@@ -204,18 +189,31 @@ END;
 $$
 STABLE
 LANGUAGE plpgsql;
-CREATE OR REPLACE FUNCTION ts_query_to_table(input_query TSQUERY)
+CREATE OR REPLACE FUNCTION ts_query_to_table(config REGCONFIG, input_query TSQUERY)
 RETURNS TABLE(phrase_vector TSVECTOR, phrase_query TSQUERY, lexeme TEXT, pos SMALLINT) AS
 $$
 BEGIN
 	RETURN QUERY 
 	(WITH phrases AS (SELECT phrase.phrase_vector, phrase.phrase_query 
-	                  FROM ts_query_to_ts_vector(input_query) AS phrase)
+	                  FROM ts_query_to_ts_vector(config, input_query) AS phrase)
      SELECT phrases.phrase_vector, 
             phrases.phrase_query,
             word.lex, 
             word.pos
      FROM phrases, ts_vector_to_table(phrases.phrase_vector) AS word);
+END;
+$$
+STABLE
+LANGUAGE plpgsql;
+
+
+CREATE OR REPLACE FUNCTION ts_query_to_table(input_query TSQUERY)
+RETURNS TABLE(phrase_vector TSVECTOR, phrase_query TSQUERY, lexeme TEXT, pos SMALLINT) AS
+$$
+BEGIN
+	RETURN QUERY 
+	(SELECT * FROM ts_query_to_table(current_setting('default_text_search_config')::REGCONFIG, 
+                                        input_query));
 END;
 $$
 STABLE
@@ -279,13 +277,9 @@ BEGIN
 END;
 $$
 STABLE
-LANGUAGE plpgsql;
--- Arity-5 Form of fast ts_semantic_headline with pre-computed arr & tsv
-CREATE OR REPLACE FUNCTION ts_semantic_headline (config REGCONFIG, 
-	                                             haystack_arr TEXT[], 
-                                                 content_tsv TSVECTOR, 
-												 search_query TSQUERY, 
-												 options TEXT DEFAULT ' ')
+LANGUAGE plpgsql;-- Arity-5 Form of fast ts_semantic_headline with pre-computed arr & tsv
+CREATE OR REPLACE FUNCTION ts_semantic_headline 
+(config REGCONFIG, haystack_arr TEXT[], content_tsv TSVECTOR, search_query TSQUERY, options TEXT DEFAULT ' ')
 RETURNS TEXT AS
 $$
 DECLARE
@@ -326,28 +320,24 @@ STABLE
 LANGUAGE plpgsql;
 
 -- Arity-4 Form of fast ts_semantic_headline with pre-computed arr & tsv
-CREATE OR REPLACE FUNCTION ts_semantic_headline (haystack_arr TEXT[], 
-                                                 content_tsv TSVECTOR, 
-												 search_query TSQUERY, 
-												 options TEXT DEFAULT ' ')
+CREATE OR REPLACE FUNCTION ts_semantic_headline 
+(haystack_arr TEXT[], content_tsv TSVECTOR, search_query TSQUERY, options TEXT DEFAULT ' ')
 RETURNS TEXT AS
 $$
 BEGIN
-    RETURN (SELECT ts_semantic_headline (current_setting('default_text_search_config')::REGCONFIG,
-	                                     haystack_arr,
-	                                     content_tsv,
-										 search_query, 
-										 options));
+    RETURN ts_semantic_headline(current_setting('default_text_search_config')::REGCONFIG,
+	                         	haystack_arr,
+	                            content_tsv,
+								search_query, 
+								options);
 END;
 $$
 STABLE
 LANGUAGE plpgsql;
   
 -- Arity-4 Form of simplified ts_semantic_headline 
-CREATE OR REPLACE FUNCTION ts_semantic_headline (config REGCONFIG, 
-                                                 content TEXT, 
-												 user_search TSQUERY, 
-												 options TEXT DEFAULT '')
+CREATE OR REPLACE FUNCTION ts_semantic_headline 
+(config REGCONFIG, content TEXT, user_search TSQUERY, options TEXT DEFAULT '')
 RETURNS TEXT AS
 $$
 DECLARE cleaned_content TEXT = ts_headline(config, 
@@ -356,26 +346,26 @@ DECLARE cleaned_content TEXT = ts_headline(config,
 										   'StartSel="",StopSel="",' || options);
 BEGIN
 	cleaned_content := ts_prepare_text_for_tsvector(cleaned_content);
-	RETURN  (SELECT ts_semantic_headline(regexp_split_to_array(cleaned_content, '[\s]+'), 
-                                         TO_TSVECTOR(config, cleaned_content),
-                                         user_search,
-                                         options));
+	RETURN ts_semantic_headline(config,
+	                            regexp_split_to_array(cleaned_content, '[\s]+'), 
+                                TO_TSVECTOR(config, cleaned_content),
+                                user_search,
+                                options);
 END;
 $$
 STABLE
 LANGUAGE plpgsql;
 
 -- Arity-3 Form of simplified ts_semantic_headline 
-CREATE OR REPLACE FUNCTION ts_semantic_headline(content TEXT, 
-                                                user_search TSQUERY, 
-												options TEXT DEFAULT '')
+CREATE OR REPLACE FUNCTION ts_semantic_headline
+(content TEXT, user_search TSQUERY, options TEXT DEFAULT '')
 RETURNS TEXT AS
 $$
 BEGIN
 	RETURN ts_semantic_headline(current_setting('default_text_search_config')::REGCONFIG, 
-	                                    content, 
-										user_search, 
-										options);
+	                            content, 
+								user_search, 
+								options);
 END;
 $$
 STABLE
