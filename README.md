@@ -4,8 +4,26 @@ We explore a series of methods for improving the way that postgreSQL's `ts_headl
 
 In the process, we uncover a method for replacing ts_headline that, when implemented using pre-computed columns, performs  5-10 times faster than the built-in function.
 
+The end result is a PostgreSQL extension that can either directly replace `ts_headline`, providing full phrase highlighting and improved TSQuery semantics, or, when pairing with a pre-realized lookup table, can return highlighted content up to 10x faster than `ts_headline`.
+
+## Prerequisites
+PostgreSQL@14 or greater.
+
+## Installation
+This project is in development February/April of 2024. Before we have a stable release version, if you wish to run the extension:
+
+1) Clone this repository.
+
+2) `cd` into the project directory `(/postgresql_semantic_tsheadline) 
+
+3) Run `make && make install` :
+- `make` - will compile the source files in the `/sql` folder into a single .sql file as the extention.
+- `make install` - will copy the _compiled_ (concatenated :)) .sql file into your PGSQL extensions directory. eg. `/usr/local/share/postgresql@14/extension/`
+
+4) In your target Postgres database, run `CREATE EXTENSION ts_semantic_headline;`
+
 ## Purpose
-The purpose of this repository is to document some issues encountered with using PostgreSQL full-text search to display highlighted search results to the user, and propose a solution that is expressed firstly as PGSQL user-defined functions (UDFs). The goal of creating this functionality is to demonstrate the value to the PostgreSQL community of correcting the ts_headline function to better reflect the actual semantics of the full-text search operators used for index lookup. From that, the goal is to introduce better ts_headline semantics into the postgresql source code. To get there, let's first outline the current issues and create a few UDFs to address the issue and illuminate the value of the improvements.
+The purpose of this repository is to document some issues encountered with using PostgreSQL full-text search to display highlighted search results to the user, and propose a solution that is expressed firstly as PGSQL user-defined functions (UDFs). The goal of creating this functionality is to demonstrate the value to the PostgreSQL community of correcting the ts_headline function to better reflect the actual semantics of the full-text search operators used for index lookup. From that, the goal is to introduce better ts_headline semantics into the postgresql source code, but that is a different project althoether. To get there, let's first outline the current issues and create a few UDFs to address the issue and illuminate the value of the improvements.
 
 ## Preamble
 I am a full-stack developer, building a web application that has stored a large volume of texts, as rows in a postgreSQL data table. The UI we are building performs full-text search by accepting a user-inputted string, searching, and displaying results. When we display results, we want to display passages from the text with "highlights", emphasizing the portions of the passage that match our search.
