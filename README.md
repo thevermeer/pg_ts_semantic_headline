@@ -146,7 +146,6 @@ To render a TSQuery with compatible string preparations:
 ```
 ts_prepare_query ([ config regconfig, ] query_string TEXT) RETURNS TSQUERY
 ```
-
 Consider
 ```
 SELECT 
