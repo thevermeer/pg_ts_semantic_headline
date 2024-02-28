@@ -10,7 +10,7 @@ $$
 BEGIN
     content_tsv := (SELECT ts_filter(setweight(content_tsv, 'A', ARRAY_AGG(lexes)), '{a}')
                     FROM (SELECT UNNEST(tsvector_to_array(vec.phrase_vector)) AS lexes
-                          FROM ts_query_to_ts_vector(search_query) AS vec) AS query2vec);
+                          FROM ts_query_to_ts_vector(config, search_query) AS vec) AS query2vec);
     RETURN QUERY
     (   SELECT array_to_string(haystack_arr[first:last], ' '),           
                query,
@@ -28,13 +28,13 @@ BEGIN
                            haystack.pos - query_vec.pos 
                            + (SELECT MIN(pos) 
                               FROM ts_vector_to_table(query_vec.phrase_vector)) as range_start
-                    FROM ts_query_to_table(search_query) AS query_vec 
+                    FROM ts_query_to_table(config, search_query) AS query_vec 
                     INNER JOIN ts_vector_to_table(content_tsv) AS haystack 
                     ON haystack.lex = query_vec.lexeme) AS joined_terms
               GROUP BY range_start, query, phrase_vector 
               HAVING COUNT(*) = length(phrase_vector)) AS phrase_agg
         WHERE (last - first) = (SELECT MAX(pos) - MIN(pos) 
-                                FROM ts_query_to_table(query::TSQUERY))
+                                FROM ts_query_to_table(config, query::TSQUERY))
         AND array_to_string(haystack_arr[first:last], ' ') @@ query::TSQUERY
         LIMIT match_limit);
 END;
@@ -53,7 +53,8 @@ RETURNS TABLE(words TEXT,
 $$    
 BEGIN
    RETURN QUERY
-    (SELECT ts_query_matches(current_setting('default_text_search_config')::REGCONFIG,
+    (SELECT *
+     FROM   ts_query_matches(current_setting('default_text_search_config')::REGCONFIG,
                              haystack_arr, 
                              content_tsv, 
                              search_query, 

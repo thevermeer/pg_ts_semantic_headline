@@ -1,6 +1,6 @@
 -- Arity-5 Form of fast ts_semantic_headline with pre-computed arr & tsv
 CREATE OR REPLACE FUNCTION ts_semantic_headline 
-(config REGCONFIG, haystack_arr TEXT[], content_tsv TSVECTOR, earch_query TSQUERY, options TEXT DEFAULT ' ')
+(config REGCONFIG, haystack_arr TEXT[], content_tsv TSVECTOR, search_query TSQUERY, options TEXT DEFAULT ' ')
 RETURNS TEXT AS
 $$
 DECLARE

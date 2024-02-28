@@ -26,28 +26,19 @@ CREATE OR REPLACE FUNCTION ts_prepare_text_for_tsvector(result_string text)
 RETURNS text AS
 $$
 BEGIN
-    -- We perform the chararacter substitution twice to catch any terms with 
+     -- We perform the chararacter substitution twice to catch any terms with 
 	-- multiple character-delimiter substrings
-	result_string := regexp_replace(result_string, 
-	                                '(\w)([^[:alnum:]|\s]+)(\w)', 
-									E'\\1\\2\u0001 \\3', 
-									'g');
-	result_string := regexp_replace(result_string, 
-	                                '(\w)([^[:alnum:]|\s]+)(\w)', 
-									E'\\1\\2\u0001 \\3', 
-									'g');
-	-- Removes strings that do not contain character
-	result_string := regexp_replace(result_string, 
-	                                '(\s)([^[:alnum:]|\s]+)(\s)', 
-									E' ', 
-									'g');
-	-- Deduplicates whitespace into a single space
-	result_string := regexp_replace(result_string, 
-	                                E'[\\s]+', 
-									' ', 
-									'g');		    
+	result_string := regexp_replace(result_string, '(\w)([^\w+|\s]+)(\w)', E'\\1\\2\u0001 \\3', 'g');
+	result_string := regexp_replace(result_string, '(\w)([^\w+|\s]+)(\w)', E'\\1\\2\u0001 \\3', 'g');
+	-- Use ts_debug to decompose and recompose string - computationally expensive
+	result_string := (SELECT TRIM(STRING_AGG(CASE WHEN alias='blank' THEN E'\u0001' ELSE ' ' END || token, '')) 
+                      FROM (SELECT * FROM ts_debug('simple', result_string)) AS terms
+                      WHERE NOT(token IN (' ') AND token IS NOT NULL)); 
+	result_string := regexp_replace(result_string, '(\(|\)) ', E'\\1', 'g');
+ 	result_string := regexp_replace(result_string, '(\s)([^\w|\s]+)(\s)', E' ', 'g');	 	
 
-    RETURN result_string;
+
+	RETURN TRIM(result_string);
 END;
 $$
 STABLE
