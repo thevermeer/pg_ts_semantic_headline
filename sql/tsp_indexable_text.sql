@@ -1,5 +1,5 @@
 /*
-Function: ts_prepare_text_for_tsvector
+Function: tsp_indexable_text
 
 Accepts: 
 - result_text TEXT - the source text to be prepared, by having indexing tokens removed
@@ -12,8 +12,8 @@ in a TSVector (for english-stem, so far) that maintains lexeme positions that
 will match the source text word postions, provided that both the TSVector and 
 the source text are prepared with this function.
 
-The effect of the `ts_prepare_text_for_tsvector` function can be reversed by 
-applying the ``ts_prepare_text_for_presentation` function. One should be careful 
+The effect of the `tsp_indexable_text` function can be reversed by 
+applying the ``tsp_present_text` function. One should be careful 
 as applying these two functions is intended for fast recall of search results 
 and applying these 2 functions consecutively is NOT an idempotent transformation. 
 Specifically, applying the two functions will remove all sequences of exclusively 
@@ -22,7 +22,7 @@ special characters and eliminate consecutive whitespace.
 Use with caution!
 */
 
-CREATE OR REPLACE FUNCTION ts_prepare_text_for_tsvector(result_string text)
+CREATE OR REPLACE FUNCTION tsp_indexable_text(result_string text)
 RETURNS text AS
 $$
 BEGIN

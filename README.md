@@ -20,7 +20,7 @@ This project is in development February/April of 2024. Before we have a stable r
 - `make` - will compile the source files in the `/sql` folder into a single .sql file as the extention.
 - `make install` - will copy the _compiled_ (concatenated :)) .sql file into your PGSQL extensions directory. eg. `/usr/local/share/postgresql@14/extension/`
 
-4) In your target Postgres database, run `CREATE EXTENSION ts_semantic_headline;`
+4) In your target Postgres database, run `CREATE EXTENSION tsp_semantic_headline;`
 
 ## Purpose
 The purpose of this repository is to document some issues encountered with using PostgreSQL full-text search to display highlighted search results to the user, and propose a solution that is expressed firstly as PGSQL user-defined functions (UDFs). The goal of creating this functionality is to demonstrate the value to the PostgreSQL community of correcting the ts_headline function to better reflect the actual semantics of the full-text search operators used for index lookup. From that, the goal is to introduce better ts_headline semantics into the postgresql source code, but that is a different project althoether. To get there, let's first outline the current issues and create a few UDFs to address the issue and illuminate the value of the improvements.
@@ -48,42 +48,42 @@ Approach: [[Headline function that highlights phrases without partial matches](h
 The overall solution to all 4 of the above problems, derived in the various _Approach_ sections above comes together, both from the implementation of a table with 2 pre-computed columns for more efficiecnt search AND content retrieval. Therefore, our solution consists of:
 
 ### Core Functions 
-- the `ts_query_matches(haystack_arr TEXT[], content_tsv TSVECTOR, search_query TSQUERY, match_limit INTEGER DEFAULT 5)` function, which converts a fuzzy, stemmed search into the exact phrase matches from the actual text, as well as the word positions of the match within the source text.
-- the `ts_semantic_headline(content TEXT, search_query TSQUERY, options TEXT DEFAULT ' ')` is a 1:1 replacement of ther built-in `ts_headline` function that improves the highlighting of TSQuery search to fully respect the internal semantics of full-text boolean operators, including phrase highlighting, and excluding partial matches.
-- the `ts_semantic_headline(haystack_arr TEXT[], content_tsv TSVECTOR, search_query TSQUERY, options TEXT DEFAULT ' ')` function, which, when using prerealized TSVector and TEXT[] columns, delivers highlighting 5-10 times FASTER than the built-in `ts_headline` function.
+- `tsp_query_matches(haystack_arr TEXT[], content_tsv TSVECTOR, search_query TSQUERY, match_limit INTEGER DEFAULT 5)` function, which converts a fuzzy, stemmed search into the exact phrase matches from the actual text, as well as the word positions of the match within the source text.
+- `tsp_semantic_headline(content TEXT, search_query TSQUERY, options TEXT DEFAULT ' ')` is a 1:1 replacement of ther built-in `ts_headline` function that improves the highlighting of TSQuery search to fully respect the internal semantics of full-text boolean operators, including phrase highlighting, and excluding partial matches.
+- `tsp_semantic_headline(haystack_arr TEXT[], content_tsv TSVECTOR, search_query TSQUERY, options TEXT DEFAULT ' ')` function, which, when using prerealized TSVector and TEXT[] columns, delivers highlighting 5-10 times FASTER than the built-in `ts_headline` function.
 
 ### Fast-Lookup Table (Optional)
-- An optional table schema for faster indexing, implementing both a TSVector column for fast lookup, and a TEXT[] array column for fast content retrieval. Without the table, the work herein is valuable in order to improve the phrase semantics of `ts_headline`; the pre-realization of the TEXT[] array is a necessary feature of the 5x-10x performance gains we have made in this work.
+- An optional table schema for faster indexing, implementing both a TSVector column for fast lookup, and a TEXT[] array column for fast content retrieval. Without the table, the work herein is valuable in order to improve the phrase semantics of `ts_headline`; the pre-realization of the TEXT[] array is a necessary feature of the 5x-10x performance gains we have made in this work. For maximal performance, recommend using both a TSVector column and a TEXT[] array column in your lookup table. The TEXT[] array is used for fast lookup
 
-### TS Text Treatment for Positional Indexing, etc
-- `ts_prepare_text_for_tsvector` treats a string for better positional indexing in TSVectors, by inserting \u0001\u0032 (bell character + SPACE) into words that are delineated by special characters like hyphens. 
-- `ts_prepare_text_for_presentation` undoes the special character delineation performs in `ts_prepare_text_for_tsvector` and returns the text to the pre-indexed state.
+### Text Treatment for Positional Indexing, etc
+- `tsp_indexable_text` treats a string for better positional indexing in TSVectors, by inserting \u0001\u0032 (bell character + SPACE) into words that are delineated by special characters like hyphens. 
+- `tsp_present_text` undoes the special character delineation performs in `tsp_indexable_text` and returns the text to the pre-indexed state.
 - `replace_multiple_strings` accepts a source string, an array of text to find, and an array to text to replace and accretes the replacements to form a final, transformed text.
 
 ### TSQuery and TSVector Type Coersion
-- `ts_query_to_ts_vector` - Given a TSQuery, the function returns a table of rows, with each row representing a TSQuery phrase and a TSVector representation of that phrase
-- `ts_query_to_table` - Decomposes a TSQuery into a table of lexemes and their positions.
-- `ts_vector_to_table` - Decomposes a TSVectos into a table of lexemes and their positions.
-- `ts_prepare_query` - a 1:1 replacement for the built-in `TO_TSQUERY` which treats special character delimited strings in the same fashion as `ts_prepare_text_for_tsvector`
+- `tsquery_to_tsvector` - Given a TSQuery, the function returns a table of rows, with each row representing a TSQuery phrase and a TSVector representation of that phrase
+- `tsquery_to_table` - Decomposes a TSQuery into a table of lexemes and their positions.
+- `tsvector_to_table` - Decomposes a TSVectos into a table of lexemes and their positions.
+- `to_tspquery` - a 1:1 replacement for the built-in `TO_TSQUERY` which treats special character delimited strings in the same fashion as `tsp_indexable_text`
 
 ## Outcomes
 ### Highlighting Entire Phrases in a TSQuery
-The `ts_semantic_headline` function will highlight matching, multi-word phrase patterns in our source text. Compare that, side-by-side to the built-in `ts_headline`:
+The `tsp_semantic_headline` function will highlight matching, multi-word phrase patterns in our source text. Compare that, side-by-side to the built-in `ts_headline`:
 ```
 SELECT 
-ts_semantic_headline('I can highlight search results as phrases, and not just single terms', ts_prepare_query('search<3>phrases')),
-ts_headline('I cannot highlight search results as phrases, and only single terms', ts_prepare_query('search<3>phrases'));
+tsp_semantic_headline('I can highlight search results as phrases, and not just single terms', to_tspquery('search<3>phrases')),
+ts_headline('I cannot highlight search results as phrases, and only single terms', to_tspquery('search<3>phrases'));
 ```
 | ts\_semantic\_headline |ts\_headline |
 | --- | --- |
 | I can highlight \<b\>search results as phrases,\</b\> and not just single terms |I cannot highlight \<b\>search\</b\> results as \<b\>phrases\</b\>, and only single terms |
 
 ### Partial Matches are NOT highlighted
-The built-in `ts_headline` function will not respect the phrase operators within a TSQuery, and will highlight single words and partially matching terms. `ts_semantic_headline` enforces the notion that all highlighted matches' content will abide the semantics of the TSQuery:
+The built-in `ts_headline` function will not respect the phrase operators within a TSQuery, and will highlight single words and partially matching terms. `tsp_semantic_headline` enforces the notion that all highlighted matches' content will abide the semantics of the TSQuery:
 ```
 SELECT 
-ts_semantic_headline('phrase matches are highlighted, partial matches are not', ts_prepare_query('phrase<->match')),
-ts_headline('phrase matches are highlighted, partial matches are as well', ts_prepare_query('phrase<->match'));
+tsp_semantic_headline('phrase matches are highlighted, partial matches are not', to_tspquery('phrase<->match')),
+ts_headline('phrase matches are highlighted, partial matches are as well', to_tspquery('phrase<->match'));
 ```
 | ts\_semantic\_headline |ts\_headline |
 | --- | --- |
@@ -96,7 +96,7 @@ Though not required, if we pre-compute both the lookup index (TSVector) and the 
 
 Performing our search-and-recall across 100 documents, each with nearly the maximum number of words permitted in a TSVector,  we see:
 ```
-EXPLAIN ANALYZE SELECT ts_semantic_headline(content_arr, content_tsv, ts_prepare_query('best<2>time')) FROM files;
+EXPLAIN ANALYZE SELECT tsp_semantic_headline(content_arr, content_tsv, to_tspquery('best<2>time')) FROM files;
 ```
 | QUERY PLAN |
 | --- |
@@ -107,7 +107,7 @@ EXPLAIN ANALYZE SELECT ts_semantic_headline(content_arr, content_tsv, ts_prepare
 
 Compared to the built-in `ts_headline` function performing the same task:
 ```
-EXPLAIN ANALYZE SELECT ts_headline(content, ts_prepare_query('best<2>time')) FROM files;
+EXPLAIN ANALYZE SELECT ts_headline(content, to_tspquery('best<2>time')) FROM files;
 ```
 | QUERY PLAN |
 | --- |
@@ -116,16 +116,16 @@ EXPLAIN ANALYZE SELECT ts_headline(content, ts_prepare_query('best<2>time')) FRO
 | Execution Time: 5724.348 ms |
 
 ### Improves ts_headline semantics without additional indices or pre-computed columns
-If you do not want to pre-compute (or re-compute) a TSVector for search, or realizing a TEXT[] array of a long string seems too expensive, we also have a flavour of `ts_semantic_headline` that has the same method signature as the built-in `ts_headline` function, and uses function that under-the-hood to perform semantically-correct content highlighting of phrases, highlighting multi-word phrases and eliminating partial matches.
+If you do not want to pre-compute (or re-compute) a TSVector for search, or realizing a TEXT[] array of a long string seems too expensive, we also have a flavour of `tsp_semantic_headline` that has the same method signature as the built-in `ts_headline` function, and uses function that under-the-hood to perform semantically-correct content highlighting of phrases, highlighting multi-word phrases and eliminating partial matches.
 
 ## Usage
 
 ### Parsing Documents
-In order to perform fast content retrieval, we are going to treat our source text such that the positions within our language-stemmed TSVector will align with the word positions in our TEXT[] array of words. In order to do that, we will use the `ts_prepare_text_for_tsvector` function, which accpets TEXT, cleans the string of special-character delimited words, and returns text:
+In order to perform fast content retrieval, we are going to treat our source text such that the positions within our language-stemmed TSVector will align with the word positions in our TEXT[] array of words. In order to do that, we will use the `tsp_indexable_text` function, which accpets TEXT, cleans the string of special-character delimited words, and returns text:
 ```
-ts_prepare_text_for_tsvector(TEXT) RETURNS TEXT
+tsp_indexable_text(TEXT) RETURNS TEXT
 ```
-As an example, `SELECT ts_prepare_text_for_tsvector('hyphen-delimited and other.such~terms are treated');` will return:
+As an example, `SELECT tsp_indexable_text('hyphen-delimited and other.such~terms are treated');` will return:
 | ts\_prepare\_text\_for\_tsvector |
 | --- |
 | hyphen\- delimited and other. such~ terms are treated |
@@ -134,17 +134,17 @@ Note that the ` ` (Bell Character + SPACE) have been inserted to break apart sp
 
 With that, in order to render a conformant TSVector, we will run:
 ```
-SELECT TO_TSVECTOR(ts_prepare_text_for_tsvector('our content to index'));
+SELECT TO_TSVECTOR(tsp_indexable_text('our content to index'));
 ```
 In order to generate our precomputed TEXT[] array, we will do much the same:
 ```
-SELECT regexp_split_to_array(ts_prepare_text_for_tsvector('our content to index'), '[\s]+');
+SELECT regexp_split_to_array(tsp_indexable_text('our content to index'), '[\s]+');
 ```
 Finally, if we are realizing the TSVector and TEXT[] array to a lookup table, we can do both, in one step, in our trigger function:
 ```
 CREATE OR REPLACE FUNCTION trg_update_content_tsv_and_arr()
 RETURNS TRIGGER AS $$
-DECLARE clean_text TEXT = = ts_prepare_text_for_tsvector(NEW.content);
+DECLARE clean_text TEXT = = tsp_indexable_text(NEW.content);
 BEGIN
     NEW.content_tsv       := to_tsvector(clean_text);   
     NEW.content_arr       := regexp_split_to_array(clean_textt, '[\s]+');
@@ -162,12 +162,12 @@ With all of that said, we will treat the needle with the same preparaions as we 
 
 To render a TSQuery with compatible string preparations:
 ```
-ts_prepare_query ([ config regconfig, ] query_string TEXT) RETURNS TSQUERY
+to_tspquery ([ config regconfig, ] query_string TEXT) RETURNS TSQUERY
 ```
 Consider
 ```
 SELECT 
-ts_prepare_query( 'seek-ing<2>find.ing<1>the<1>needle<3>in-fix'),
+to_tspquery( 'seek-ing<2>find.ing<1>the<1>needle<3>in-fix'),
 to_tsquery('seek-ing<2>find.ing<1>the<1>needle<3>in-fix');
 ```
 | ts\_prepare\_query |to\_tsquery |

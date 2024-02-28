@@ -1,5 +1,5 @@
 /*
-Function: ts_query_to_ts_vector
+Function: tsquery_to_tsvector
 
 Accepts: 
 - input_query TSQuery - a well-formed TSQuery that is may be complex, containing 
@@ -17,7 +17,7 @@ and brackets are ignored, and the table is then a representation of a list of
 phrase patterns in the query
 */
 
-CREATE OR REPLACE FUNCTION ts_query_to_ts_vector(config REGCONFIG, input_query TSQUERY)
+CREATE OR REPLACE FUNCTION tsquery_to_tsvector(config REGCONFIG, input_query TSQUERY)
 RETURNS TABLE(phrase_vector TSVECTOR, phrase_query TSQUERY) AS
 $$
 DECLARE
@@ -49,12 +49,12 @@ $$
 STABLE
 LANGUAGE plpgsql;
 
-CREATE OR REPLACE FUNCTION ts_query_to_ts_vector(input_query TSQUERY)
+CREATE OR REPLACE FUNCTION tsquery_to_tsvector(input_query TSQUERY)
 RETURNS TABLE(phrase_vector TSVECTOR, phrase_query TSQUERY) AS
 $$
 BEGIN
    RETURN QUERY 
-   (SELECT * FROM ts_query_to_ts_vector(current_setting('default_text_search_config')::REGCONFIG, input_query));
+   (SELECT * FROM tsquery_to_tsvector(current_setting('default_text_search_config')::REGCONFIG, input_query));
 END;
 $$
 STABLE

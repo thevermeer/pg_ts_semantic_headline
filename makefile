@@ -1,9 +1,9 @@
 
 
-EXTENSION = ts_semantic_headline
-DATA = ts_semantic_headline--1.0.sql
+EXTENSION = tsp_semantic_headline
+DATA = tsp_semantic_headline--1.0.sql
 DIRECTORY = /sql
-EXTENSION_NAME = ts_semantic_headline
+EXTENSION_NAME = tsp_semantic_headline
 VERSION = 1.0
 SCHEMA = public
 

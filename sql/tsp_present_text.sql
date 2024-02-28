@@ -1,5 +1,5 @@
 /*
-Function: ts_prepare_text_for_presentation
+Function: tsp_present_text
 Accepts: 
 - input_text    TEXT - the source text to be prepared, by having indexing tokens 
                        removed
@@ -9,10 +9,10 @@ Accepts:
 
 Returns a string with the indexing tokens of Bell Character (u0001) + SPACE removed, 
 including those sequences which are divided by a specified end_delimiter. Reverses 
-the effect of `ts_prepare_text_for_tsvector` function.
+the effect of `tsp_indexable_text` function.
 */
 
-CREATE OR REPLACE FUNCTION ts_prepare_text_for_presentation (input_text TEXT, end_delimiter TEXT DEFAULT '</b>')
+CREATE OR REPLACE FUNCTION tsp_present_text (input_text TEXT, end_delimiter TEXT DEFAULT '</b>')
 RETURNS TEXT AS
 $$
 BEGIN

@@ -1,0 +1,3 @@
+# TS Semantic Headlines extension
+comment = 'Phrase highlighting and improved semantics for ts_headline'
+default_version = '1.0'

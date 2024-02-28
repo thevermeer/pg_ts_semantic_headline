@@ -1,10 +1,10 @@
 /*
-Function: ts_prepare_query
+Function: to_tspquery
 
 TODO :: Write me!
 */
 
-CREATE OR REPLACE FUNCTION ts_prepare_query(config REGCONFIG, query_string TEXT)
+CREATE OR REPLACE FUNCTION to_tspquery(config REGCONFIG, query_string TEXT)
 RETURNS TSQUERY AS
 $$
 BEGIN
@@ -20,11 +20,11 @@ $$
 STABLE
 LANGUAGE plpgsql;
 
-CREATE OR REPLACE FUNCTION ts_prepare_query(query_string TEXT)
+CREATE OR REPLACE FUNCTION to_tspquery(query_string TEXT)
 RETURNS TSQUERY AS
 $$
 BEGIN    
-    RETURN ts_prepare_query(current_setting('default_text_search_config')::REGCONFIG, 
+    RETURN to_tspquery(current_setting('default_text_search_config')::REGCONFIG, 
 	                        query_string);
 END;
 $$
