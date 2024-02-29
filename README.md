@@ -176,3 +176,32 @@ to_tsquery('seek-ing<2>find.ing<1>the<1>needle<3>in-fix');
 
 
 ### Highlighting Search Results
+To present search results it is ideal to show a part of each document and how it is related to the query. Usually, search engines show fragments of the document with marked search terms. PostgreSQL provides a function `ts_headline` that implements this functionality, however the built-in `ts_headline` function does not respect the semantics of phrase operators in TSQueries, and it is very computationally expensive.
+
+In order to correct these two pressing issues, this extension offers two (2) separate approaches to replacing `ts_headline` with `tsp_semantic_headline`:
+```
+tsp_semantic_headline([ config regconfig, ] document text, query tsquery [, options text ]) returns text
+```
+ts_headline accepts a document along with a query, and returns an excerpt from the document in which terms from the query are highlighted. Specifically, the function will use the query to select relevant text fragments, and then highlight the phrases that match the subconditions of the query. Where `ts_headline` will highlight terms even if those word positions do not match the query's restrictions, `tsp_semantic_headline` will highlight the multi-word phrase patterns, in the form that they are matching in search. The configuration to be used to parse the document can be specified by config; if config is omitted, the default_text_search_config configuration is used.
+
+The options, as implemented, do not match 1:1 with the same options for `ts_headline`, and the differences should be noted below. If an options string is specified it must consist of a comma-separated list of one or more option=value pairs. The available options are:
+
+* `MaxWords`, `MinWords` (integers): these numbers determine the number of words, beyond the length of a phrase in TSQuery, to return in each headline. For instance, a value of MinWords=4 will put min. 2 words on either side of a phrase headline.
+
+* `ShortWord` (integer): NOT IMPLEMENTED: The system does not use precisely the same `rank_cd` ordering to return the most cover-dense headline segments first, but rather find the FIRST find n matching passages within the document. See `tsp_exact_matches` function for more
+
+* `HighlightAll` (boolean): TODO: Implement this option.
+
+* `MaxFragments` (integer): maximum number of text fragments to display. The default value of zero selects a non-fragment-based headline generation method. A value greater than zero selects fragment-based headline generation (see below).
+
+* `StartSel`, `StopSel` (strings): the strings with which to delimit query words appearing in the document, to distinguish them from other excerpted words. The default values are “<b>” and “</b>”, which can be suitable for HTML output.
+
+* `FragmentDelimiter` (string): When more than one fragment is displayed, the fragments will be separated by this string. The default is “ ... ”.
+
+These option names are recognized case-insensitively. You must double-quote string values if they contain spaces or commas.
+
+In non-fragment-based headline generation, ts_headline locates matches for the given query and chooses a single one to display, preferring matches that have more query words within the allowed headline length. In fragment-based headline generation, ts_headline locates the query matches and splits each match into “fragments” of no more than MaxWords words each, preferring fragments with more query words, and when possible “stretching” fragments to include surrounding words. The fragment-based mode is thus more useful when the query matches span large sections of the document, or when it's desirable to display multiple matches. 
+
+#### TODO:
+Currently: In either mode, if no query matches can be identified, we return NULL, however, this will do weird things with JOINs and as a result, we should really return text qsa per the ts_headline spec: 
+> In either mode, if no query matches can be identified, then a single fragment of the first MinWords words in the document will be displayed.
