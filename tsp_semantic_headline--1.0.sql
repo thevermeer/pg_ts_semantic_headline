@@ -1,10 +1,10 @@
 /*
-Function: to_tspquery
+Function: tsp_to_tsquery
 
 TODO :: Write me!
 */
 
-CREATE OR REPLACE FUNCTION to_tspquery(config REGCONFIG, query_string TEXT)
+CREATE OR REPLACE FUNCTION tsp_to_tsquery(config REGCONFIG, query_string TEXT)
 RETURNS TSQUERY AS
 $$
 BEGIN
@@ -20,11 +20,11 @@ $$
 STABLE
 LANGUAGE plpgsql;
 
-CREATE OR REPLACE FUNCTION to_tspquery(query_string TEXT)
+CREATE OR REPLACE FUNCTION tsp_to_tsquery(query_string TEXT)
 RETURNS TSQUERY AS
 $$
 BEGIN    
-    RETURN to_tspquery(current_setting('default_text_search_config')::REGCONFIG, 
+    RETURN tsp_to_tsquery(current_setting('default_text_search_config')::REGCONFIG, 
 	                        query_string);
 END;
 $$
@@ -47,12 +47,12 @@ END;
 $$
 LANGUAGE plpgsql;
 /*
-Function: to_tspquery
+Function: tsp_to_tsquery
 
 TODO :: Write me!
 */
 
-CREATE OR REPLACE FUNCTION to_tspquery(config REGCONFIG, query_string TEXT)
+CREATE OR REPLACE FUNCTION tsp_to_tsquery(config REGCONFIG, query_string TEXT)
 RETURNS TSQUERY AS
 $$
 BEGIN
@@ -68,11 +68,11 @@ $$
 STABLE
 LANGUAGE plpgsql;
 
-CREATE OR REPLACE FUNCTION to_tspquery(query_string TEXT)
+CREATE OR REPLACE FUNCTION tsp_to_tsquery(query_string TEXT)
 RETURNS TSQUERY AS
 $$
 BEGIN    
-    RETURN to_tspquery(current_setting('default_text_search_config')::REGCONFIG, 
+    RETURN tsp_to_tsquery(current_setting('default_text_search_config')::REGCONFIG, 
 	                        query_string);
 END;
 $$
