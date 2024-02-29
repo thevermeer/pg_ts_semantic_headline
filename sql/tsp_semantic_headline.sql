@@ -40,6 +40,7 @@ $$
 STABLE
 LANGUAGE plpgsql;
 
+-- OVERLOAD Arity-5 form, to infer the default_text_search_config for parsing
 -- Arity-4 Form of fast tsp_semantic_headline with pre-computed arr & tsv
 CREATE OR REPLACE FUNCTION tsp_semantic_headline 
 (haystack_arr TEXT[], content_tsv TSVECTOR, search_query TSQUERY, options TEXT DEFAULT ' ')
@@ -77,6 +78,7 @@ $$
 STABLE
 LANGUAGE plpgsql;
 
+-- OVERLOAD Arity-4 form #2, to infer the default_text_search_config for parsing
 -- Arity-3 Form of simplified tsp_semantic_headline 
 CREATE OR REPLACE FUNCTION tsp_semantic_headline
 (content TEXT, user_search TSQUERY, options TEXT DEFAULT '')

@@ -49,6 +49,7 @@ $$
 STABLE
 LANGUAGE plpgsql;
 
+-- OVERLOAD Arity-2 form, to infer the default_text_search_config for parsing
 CREATE OR REPLACE FUNCTION tsquery_to_tsvector(input_query TSQUERY)
 RETURNS TABLE(phrase_vector TSVECTOR, phrase_query TSQUERY) AS
 $$
