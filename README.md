@@ -64,15 +64,15 @@ The overall solution to all 4 of the above problems, derived in the various _App
 - `tsquery_to_tsvector` - Given a TSQuery, the function returns a table of rows, with each row representing a TSQuery phrase and a TSVector representation of that phrase
 - `tsquery_to_table` - Decomposes a TSQuery into a table of lexemes and their positions.
 - `tsvector_to_table` - Decomposes a TSVectos into a table of lexemes and their positions.
-- `to_tspquery` - a 1:1 replacement for the built-in `TO_TSQUERY` which treats special character delimited strings in the same fashion as `tsp_indexable_text`
+- `tsp_to_tsquery` - a 1:1 replacement for the built-in `TO_TSQUERY` which treats special character delimited strings in the same fashion as `tsp_indexable_text`
 
 ## Outcomes
 ### Highlighting Entire Phrases in a TSQuery
 The `tsp_semantic_headline` function will highlight matching, multi-word phrase patterns in our source text. Compare that, side-by-side to the built-in `ts_headline`:
 ```
 SELECT 
-tsp_semantic_headline('I can highlight search results as phrases, and not just single terms', to_tspquery('search<3>phrases')),
-ts_headline('I cannot highlight search results as phrases, and only single terms', to_tspquery('search<3>phrases'));
+tsp_semantic_headline('I can highlight search results as phrases, and not just single terms', tsp_to_tsquery('search<3>phrases')),
+ts_headline('I cannot highlight search results as phrases, and only single terms', tsp_to_tsquery('search<3>phrases'));
 ```
 | ts\_semantic\_headline |ts\_headline |
 | --- | --- |
@@ -82,8 +82,8 @@ ts_headline('I cannot highlight search results as phrases, and only single terms
 The built-in `ts_headline` function will not respect the phrase operators within a TSQuery, and will highlight single words and partially matching terms. `tsp_semantic_headline` enforces the notion that all highlighted matches' content will abide the semantics of the TSQuery:
 ```
 SELECT 
-tsp_semantic_headline('phrase matches are highlighted, partial matches are not', to_tspquery('phrase<->match')),
-ts_headline('phrase matches are highlighted, partial matches are as well', to_tspquery('phrase<->match'));
+tsp_semantic_headline('phrase matches are highlighted, partial matches are not', tsp_to_tsquery('phrase<->match')),
+ts_headline('phrase matches are highlighted, partial matches are as well', tsp_to_tsquery('phrase<->match'));
 ```
 | ts\_semantic\_headline |ts\_headline |
 | --- | --- |
@@ -96,7 +96,7 @@ Though not required, if we pre-compute both the lookup index (TSVector) and the 
 
 Performing our search-and-recall across 100 documents, each with nearly the maximum number of words permitted in a TSVector,  we see:
 ```
-EXPLAIN ANALYZE SELECT tsp_semantic_headline(content_arr, content_tsv, to_tspquery('best<2>time')) FROM files;
+EXPLAIN ANALYZE SELECT tsp_semantic_headline(content_arr, content_tsv, tsp_to_tsquery('best<2>time')) FROM files;
 ```
 | QUERY PLAN |
 | --- |
@@ -107,7 +107,7 @@ EXPLAIN ANALYZE SELECT tsp_semantic_headline(content_arr, content_tsv, to_tspque
 
 Compared to the built-in `ts_headline` function performing the same task:
 ```
-EXPLAIN ANALYZE SELECT ts_headline(content, to_tspquery('best<2>time')) FROM files;
+EXPLAIN ANALYZE SELECT ts_headline(content, tsp_to_tsquery('best<2>time')) FROM files;
 ```
 | QUERY PLAN |
 | --- |
@@ -162,12 +162,12 @@ With all of that said, we will treat the needle with the same preparaions as we 
 
 To render a TSQuery with compatible string preparations:
 ```
-to_tspquery ([ config regconfig, ] query_string TEXT) RETURNS TSQUERY
+tsp_to_tsquery ([ config regconfig, ] query_string TEXT) RETURNS TSQUERY
 ```
 Consider
 ```
 SELECT 
-to_tspquery( 'seek-ing<2>find.ing<1>the<1>needle<3>in-fix'),
+tsp_to_tsquery( 'seek-ing<2>find.ing<1>the<1>needle<3>in-fix'),
 to_tsquery('seek-ing<2>find.ing<1>the<1>needle<3>in-fix');
 ```
 | ts\_prepare\_query |to\_tsquery |
