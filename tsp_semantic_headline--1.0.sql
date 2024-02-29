@@ -108,8 +108,8 @@ $$
 BEGIN
      -- We perform the chararacter substitution twice to catch any terms with 
 	-- multiple character-delimiter substrings
-	result_string := regexp_replace(result_string, '(\w)([^\w+|\s]+)(\w)', E'\\1\\2\u0001 \\3', 'g');
-	result_string := regexp_replace(result_string, '(\w)([^\w+|\s]+)(\w)', E'\\1\\2\u0001 \\3', 'g');
+	result_string := regexp_replace(result_string, '(\w)([-]+)(\w)', E'\\1\\2\u0001 \\3', 'g');
+	result_string := regexp_replace(result_string, '(\w)([-]+)(\w)', E'\\1\\2\u0001 \\3', 'g');
 	-- Use ts_debug to decompose and recompose string - computationally expensive
 	result_string := (SELECT TRIM(STRING_AGG(CASE WHEN alias='blank' THEN E'\u0001' ELSE ' ' END || token, '')) 
                       FROM (SELECT * FROM ts_debug('simple', result_string)) AS terms
@@ -191,7 +191,7 @@ BEGIN
               HAVING COUNT(*) = length(phrase_vector)) AS phrase_agg
         WHERE (last - first) = (SELECT MAX(pos) - MIN(pos) 
                                 FROM tsquery_to_table(config, query::TSQUERY))
-        AND unaccent(array_to_string(haystack_arr[first:last], ' ')) @@ query::TSQUERY
+        AND TO_TSVECTOR(config, array_to_string(haystack_arr[first:last], ' ')) @@ query::TSQUERY
         LIMIT match_limit);
 END;
 $$
