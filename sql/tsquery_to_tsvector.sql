@@ -29,6 +29,8 @@ BEGIN
     input_text := regexp_replace(input_text, '\(|\)', '', 'g');
 
     RETURN QUERY 
+    -- ts_filter + setweight is used to remove dummy lexeme from TSVector
+    -- Set everything to weight A, set dummy word to D, filter for A, remove weights
     (SELECT setweight(ts_filter(setweight(setweight(phrase_vec, 'A'), 
                                           'D',
                                           ARRAY['xdummywordx']), 

@@ -1,7 +1,14 @@
 /*
 Function: tsp_to_tsquery
 
-TODO :: Write me!
+Akin to the builtin function `to_tsquery`, this function converts text to a 
+tsquery, normalizing words according to the specified or default configuration. 
+The words must be combined by valid tsquery operators.
+
+tsp_to_tsquery('english', 'The & Fat & Rats') → 'fat' & 'rat'
+
+For the purposes of a TSQuery, this function is the treatment for TSQueries for
+index-friendly positioning and is paralleled with tsp_indexable_text in TSVectors
 */
 
 CREATE OR REPLACE FUNCTION tsp_to_tsquery(config REGCONFIG, query_string TEXT)
