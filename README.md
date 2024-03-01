@@ -205,3 +205,24 @@ In non-fragment-based headline generation, ts_headline locates matches for the g
 #### TODO:
 Currently: In either mode, if no query matches can be identified, we return NULL, however, this will do weird things with JOINs and as a result, we should really return text qsa per the ts_headline spec: 
 > In either mode, if no query matches can be identified, then a single fragment of the first MinWords words in the document will be displayed.
+
+For example
+```
+SELECT tsp_semantic_headline('english'::REGCONFIG,
+  'The most common type of search
+is to find all documents containing given query-terms
+and return them in order of their similarity to the query.',
+  tsp_to_tsquery('english', 'query-terms & similarity<3>query'));
+```
+| tsp\_semantic\_headline |
+| --- |
+| \<b\>query\-terms\</b\>and return them in order of their \<b\>similarity to the query\</b\> |
+
+```
+'Search terms may occur
+many times in a document,
+requiring ranking of the search matches to decide which
+occurrences to display in the result.',
+  to_tsquery('english', 'search & term'),
+  'MaxFragments=10, MaxWords=7, MinWords=3, StartSel=<<, StopSel=>>');
+```
