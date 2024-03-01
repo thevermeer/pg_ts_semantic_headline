@@ -17,15 +17,11 @@ RETURNS TEXT AS
 $$
 BEGIN
     -- Removes Bell Char + SPACE sequences
-    input_text := regexp_replace(input_text, 
-                                 E'\u0001 ', 
-                                 '', 
-                                 'g');
+    input_text := regexp_replace(input_text, E'\u0001 ', '', 'g');
     -- Removes Bell Char + end_delimiter + SPACE sequences
-    input_text := regexp_replace(input_text, 
-                                 E'\u0001(' || end_delimiter || ') ', 
-                                 E'\\2\\1', 
-                                 'g');
+    input_text := regexp_replace(input_text,  E'\u0001(' || end_delimiter || ') ', E'\\2\\1', 'g');
+    -- Having cleaned the added spaces, now we removes all Bell Chars
+    input_text := regexp_replace(input_text, E'\u0001', '', 'g');
     -- Trim string and return
 	RETURN TRIM(input_text);
 END;
