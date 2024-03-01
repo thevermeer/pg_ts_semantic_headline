@@ -20,29 +20,36 @@ Returns a table of exact matches returned from the fuzzy TSQuery search, Each ro
 - end_pos   SMALLINT - the last word position of the found term within the document.
 */
 
-CREATE OR REPLACE FUNCTION tsp_filter_tsv
+
+-- Internal Helper Function, broken out for debugging
+-- Returns a filtered TSV containing ONLY the lexemes within
+CREATE OR REPLACE FUNCTION tsp_filter_tsvector_with_tsquery
 (config REGCONFIG, tsv TSVECTOR,  search_query TSQUERY)
 RETURNS TSVECTOR AS
 $$    
 BEGIN
    RETURN 
     (SELECT ts_filter(setweight(tsv, 'A', ARRAY_AGG(lexes)), '{a}')
-                    FROM (SELECT UNNEST(tsvector_to_array(vec.phrase_vector)) AS lexes
-                          FROM tsquery_to_tsvector(config, search_query) AS vec) AS query2vec);
+     FROM (SELECT UNNEST(tsvector_to_array(vec.phrase_vector)) AS lexes
+           FROM tsquery_to_tsvector(config, search_query) AS vec) AS query2vec);
 END;
 $$
 STABLE
 LANGUAGE plpgsql;
 
 CREATE OR REPLACE FUNCTION tsp_query_matches
-(config REGCONFIG, haystack_arr TEXT[], content_tsv TSVECTOR, search_query TSQUERY, match_limit INTEGER DEFAULT 5, disable_semantic_check BOOLEAN DEFAULT FALSE)
+(config REGCONFIG, haystack_arr TEXT[], content_tsv TSVECTOR, search_query TSQUERY, 
+ match_limit INTEGER DEFAULT 5, 
+ disable_semantic_check BOOLEAN DEFAULT FALSE)
 RETURNS TABLE(words TEXT, 
               ts_query TSQUERY, 
               start_pos SMALLINT, 
               end_pos SMALLINT) AS
 $$    
 BEGIN
-    content_tsv := tsp_filter_tsv(config, content_tsv, search_query);
+    -- Reduce the input TSV to only the lexemes matching the query
+    content_tsv := tsp_filter_tsvector_with_tsquery(config, content_tsv, search_query);
+
     RETURN QUERY
     (   SELECT array_to_string(haystack_arr[first:last], ' '),           
                query,
