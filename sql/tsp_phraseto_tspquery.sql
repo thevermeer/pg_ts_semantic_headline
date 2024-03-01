@@ -29,8 +29,8 @@ CREATE OR REPLACE FUNCTION tsp_phraseto_tsquery(query_string TEXT)
 RETURNS TSQUERY AS
 $$
 BEGIN    
-    RETURN tsp_to_tsquery(current_setting('default_text_search_config')::REGCONFIG, 
-	                      query_string);
+    RETURN tsp_phraseto_tsquery(current_setting('default_text_search_config')::REGCONFIG, 
+	                            query_string);
 END;
 $$
 STABLE
