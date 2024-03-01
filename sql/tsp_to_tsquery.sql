@@ -1,6 +1,11 @@
 /*
 Function: tsp_to_tsquery
 
+Accepts:
+- config       REGCONFIG - PGSQL Text Search Language Configuration
+- query_string TEXT      - String of search terms connected with TSQuery
+                           operators.
+
 Akin to the builtin function `to_tsquery`, this function converts text to a 
 tsquery, normalizing words according to the specified or default configuration. 
 The words must be combined by valid tsquery operators.

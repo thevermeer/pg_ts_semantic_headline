@@ -1,35 +1,3 @@
-/*
-Function: tsp_to_tsquery
-
-TODO :: Write me!
-*/
-
-CREATE OR REPLACE FUNCTION tsp_to_tsquery(config REGCONFIG, query_string TEXT)
-RETURNS TSQUERY AS
-$$
-BEGIN
-    -- We perform the chararacter substitution twice to catch any terms with 
-	-- multiple character-delimiter substrings
-	query_string := ' ' || query_string || ' ';
-	query_string := regexp_replace(query_string, '(\w)([^[:alnum:]&^<>|\s]+)(\w)', E'\\1\\2\<1>\\3', 'g');
-	query_string := regexp_replace(query_string, '(\w)([^[:alnum:]&^<>|\s]+)(\w)', E'\\1\\2\<1>\\3', 'g');	    
-    
-	RETURN TO_TSQUERY(config, query_string);
-END;
-$$
-STABLE
-LANGUAGE plpgsql;
-
-CREATE OR REPLACE FUNCTION tsp_to_tsquery(query_string TEXT)
-RETURNS TSQUERY AS
-$$
-BEGIN    
-    RETURN tsp_to_tsquery(current_setting('default_text_search_config')::REGCONFIG, 
-	                        query_string);
-END;
-$$
-STABLE
-LANGUAGE plpgsql;
 CREATE OR REPLACE FUNCTION replace_multiple_strings(source_text text, find_array text[], replace_array text[])
 RETURNS text AS
 $$
@@ -45,38 +13,6 @@ BEGIN
     RETURN source_text;
 END;
 $$
-LANGUAGE plpgsql;
-/*
-Function: tsp_to_tsquery
-
-TODO :: Write me!
-*/
-
-CREATE OR REPLACE FUNCTION tsp_to_tsquery(config REGCONFIG, query_string TEXT)
-RETURNS TSQUERY AS
-$$
-BEGIN
-    -- We perform the chararacter substitution twice to catch any terms with 
-	-- multiple character-delimiter substrings
-	query_string := ' ' || query_string || ' ';
-	query_string := regexp_replace(query_string, '(\w)([^[:alnum:]&^<>|\s]+)(\w)', E'\\1\\2\<1>\\3', 'g');
-	query_string := regexp_replace(query_string, '(\w)([^[:alnum:]&^<>|\s]+)(\w)', E'\\1\\2\<1>\\3', 'g');	    
-    
-	RETURN TO_TSQUERY(config, query_string);
-END;
-$$
-STABLE
-LANGUAGE plpgsql;
-
-CREATE OR REPLACE FUNCTION tsp_to_tsquery(query_string TEXT)
-RETURNS TSQUERY AS
-$$
-BEGIN    
-    RETURN tsp_to_tsquery(current_setting('default_text_search_config')::REGCONFIG, 
-	                        query_string);
-END;
-$$
-STABLE
 LANGUAGE plpgsql;
 /*
 Function: tsp_indexable_text
@@ -108,13 +44,21 @@ $$
 BEGIN
      -- We perform the chararacter substitution twice to catch any terms with 
 	-- multiple character-delimiter substrings
-	result_string := regexp_replace(result_string, '(\w)([-]+)(\w)', E'\\1\\2\u0001 \\3', 'g');
-	result_string := regexp_replace(result_string, '(\w)([-]+)(\w)', E'\\1\\2\u0001 \\3', 'g');
+	result_string := regexp_replace(result_string, '(\w)([\u0002|\u0003|\u0004|' ||
+	'\u0005|\u0006|\u0007|\u0008|\u0009|\u000a|\u000b|\u000c|\u000d|\u000e|\u000f|' ||
+	'\u0010|\u0011|\u0012|\u0013|\u0014|\u0015|\u0016|\u0017|\u0018|\u0019|\u001a|' || 
+	'\u001b|\u001c|\u001d|\u001e|\u001f|\u0021|\u0022|\u0023|\u0024|\u0025|\u0026|' || 
+	'\u0027|\u0028|\u0029|\u002a|\u002b|\u002c|\u002d|\u002e|\u002f|\u003a|\u003b|' ||
+	'\u003c|\u003d|\u003e|\u003f|\u0040|\u005b|\u005c|\u005d|\u005e|\u005f|\u0060|' ||
+	'\u007b|\u007c|\u007d|\u007e|\u007f]+)(\w)', E'\\1\\2\u0001 \\3', 'g');
+	
+	--result_string := regexp_replace(result_string, '(\w)([\u0002|\u0003|\u0004|\u0005|\u0006|\u0007|\u0008|\u0009|\u000a|\u000b|\u000c|\u000d|\u000e|\u000f|\u0010|\u0011|\u0012|\u0013|\u0014|\u0015|\u0016|\u0017|\u0018|\u0019|\u001a|\u001b|\u001c|\u001d|\u001e|\u001f|\u0021|\u0022|\u0023|\u0024|\u0025|\u0026|\u0027|\u0028|\u0029|\u002a|\u002b|\u002c|\u002d|\u002e|\u002f|\u003a|\u003b|\u003c|\u003d|\u003e|\u003f|\u0040|\u005b|\u005c|\u005d|\u005e|\u005f|\u0060|\u007b|\u007c|\u007d|\u007e|\u007f]+)(\w)', E'\\1\\2\u0001 \\3', 'g');
+
 	-- Use ts_debug to decompose and recompose string - computationally expensive
-	result_string := (SELECT TRIM(STRING_AGG(CASE WHEN alias='blank' THEN E'\u0001' ELSE ' ' END || token, '')) 
-                      FROM (SELECT * FROM ts_debug('simple', result_string)) AS terms
-                      WHERE NOT(token IN (' ') AND token IS NOT NULL)); 
-	result_string := regexp_replace(result_string, '(\(|\)) ', E'\\1', 'g');
+	--result_string := (SELECT TRIM(STRING_AGG(CASE WHEN alias='blank' THEN E'\u0001' ELSE ' ' END || token, '')) 
+    --                  FROM (SELECT * FROM ts_debug('simple', result_string)) AS terms
+    --                  WHERE NOT(token IN (' ') AND token IS NOT NULL)); 
+	-- 	 result_string := regexp_replace(result_string, '(\(|\)) ', E'\\1', 'g');
  	result_string := regexp_replace(result_string, '(\s)([^\w|\s]+)(\s)', E' ', 'g');	 	
 
 
@@ -123,6 +67,43 @@ END;
 $$
 STABLE
 LANGUAGE plpgsql;/*
+Function: tsp_phraseto_tsquery
+
+1:1 replacement for the built-in PHRASETO_TSQuery function:
+
+Accepts 
+- config       REGCONFIG - PGSQL Text Search Language Configuration
+- query_string TEXT - a common language string as a phrase, or ordered 
+                      combination of multiple words.
+
+Returns a TSQuery that represents the query phrase after its treament with 
+tsp_indexable_text. This is done to attain positional alignment between raw text
+and the rendered TSVector. As we are searching on a treated vector, we need to treat
+the phrase used to render a TSQuery in the same way
+*/
+
+CREATE OR REPLACE FUNCTION tsp_phraseto_tsquery(config REGCONFIG, query_string TEXT)
+RETURNS TSQUERY AS
+$$
+BEGIN
+	RETURN PHRASETO_TSQUERY(config, tsp_indexable_text(query_string));
+END;
+$$
+STABLE
+LANGUAGE plpgsql;
+
+-- OVERLOAD Arity-2 form, to infer the default_text_search_config for parsing
+CREATE OR REPLACE FUNCTION tsp_phraseto_tsquery(query_string TEXT)
+RETURNS TSQUERY AS
+$$
+BEGIN    
+    RETURN tsp_to_tsquery(current_setting('default_text_search_config')::REGCONFIG, 
+	                      query_string);
+END;
+$$
+STABLE
+LANGUAGE plpgsql;
+/*
 Function: tsp_present_text
 Accepts: 
 - input_text    TEXT - the source text to be prepared, by having indexing tokens 
@@ -156,6 +137,28 @@ END;
 $$
 STABLE
 LANGUAGE plpgsql;
+/*
+Function: tsp_query_matches
+Accepts: 
+- config       REGCONFIG - PGSQL Text Search Language Configuration
+- haystack_arr TEXT[]    - Ordered array of words, as they appear in the source
+                           document, delimited by spaces. Assumes text is preprocessed
+                           by tsp_indexable text function
+- content_tsv  TSVECTOR  - TSVector representation of the source document. Assumes text 
+                           is preprocessed by tsp_indexable text function to maintain
+                           the correct positionality of lexemes.
+- search_query TSQUERY   - TSQuery representation of a user-inputted search.
+- match_limit  INTEGER   - Number of matches to return from the start of the document.
+                           Defaults to 5.
+
+Returns a table of exact matches returned from the fuzzy TSQuery search, Each row contains:
+- words     TEXT     - the exact string found in the text
+- ts_query  TSQUERY  - the TSQuery phrase pattern that matches `words` text. A given TSQuery 
+                       can contain multiple phrase patterns
+- start_pos SMALLINT - the first word position of the found term within the document.
+- end_pos   SMALLINT - the last word position of the found term within the document.
+*/
+
 CREATE OR REPLACE FUNCTION tsp_query_matches
 (config REGCONFIG, haystack_arr TEXT[], content_tsv TSVECTOR, search_query TSQUERY, match_limit INTEGER DEFAULT 5)
 RETURNS TABLE(words TEXT, 
@@ -199,7 +202,7 @@ STABLE
 LANGUAGE plpgsql;
 
 
-
+-- OVERLOAD Arity-5 form, to infer the default_text_search_config for parsing
 CREATE OR REPLACE FUNCTION tsp_query_matches
 (haystack_arr TEXT[], content_tsv TSVECTOR, search_query TSQUERY, match_limit INTEGER DEFAULT 5)
 RETURNS TABLE(words TEXT, 
@@ -219,6 +222,55 @@ END;
 $$
 STABLE
 LANGUAGE plpgsql;
+/*
+Function: tsp_semantic_headline
+Accepts: 
+- config       REGCONFIG - PGSQL Text Search Language Configuration
+- haystack_arr TEXT[]    - Ordered array of words, as they appear in the source
+                           document, delimited by spaces. Assumes text is 
+						   preprocessed by tsp_indexable text function
+- content_tsv  TSVECTOR  - TSVector representation of the source document. 
+                           Assumes text is preprocessed by tsp_indexable text 
+						   function to maintain the correct positionality of 
+						   lexemes.
+- search_query TSQUERY   - TSQuery representation of a user-inputted search.
+- options      TEXT      - Configuration options in the same form as the 
+                           TS_HEADLINE options, with some semantic difference 
+						   in interpretting parameters.
+
+Internally, this function calls tsp_query_matches, aggregates ranges based on 
+frequency in range (akin to cover density), and returns results from the start 
+of the document forward. This diverges from the implementation of cover density 
+in ts_headline, and in making these sacrifices in order to better performance.
+
+As the internals of this function guarantee that each fragment will semantically 
+abide the TSQuery and its phrase semantics, in whole or in part, the goal is to
+return evidence of the search match, and thus we make concessions on headline 
+robustness, for speed of recall.
+
+Returns a string of 1 or more passages of text, with content matching one or more 
+phrase patterns in the TSQuery highlighted, meaning wrapped by the StartSel and 
+StopSel options.
+
+Options:
+* `MaxWords`, `MinWords` (integers): these numbers determine the number of words, 
+   beyond the length of a phrase in TSQuery, to return in each headline. For instance, 
+   a value of MinWords=4 will put min. 2 words on either side of a phrase headline.
+* `ShortWord` (integer): NOT IMPLEMENTED: The system does not use precisely the same 
+   `rank_cd` ordering to return the most cover-dense headline segments first, but rather 
+   find the FIRST find n matching passages within the document. See `tsp_exact_matches` 
+   function for more.
+* `HighlightAll` (boolean): TODO: Implement this option.
+* `MaxFragments` (integer): maximum number of text fragments to display. The default 
+  value of zero selects a non-fragment-based headline generation method. A value 
+  greater than zero selects fragment-based headline generation (see below).
+* `StartSel`, `StopSel` (strings): the strings with which to delimit query words 
+   appearing in the document, to distinguish them from other excerpted words. The 
+   default values are “<b>” and “</b>”, which can be suitable for HTML output.
+* `FragmentDelimiter` (string): When more than one fragment is displayed, the fragments 
+   will be separated by this string. The default is “ ... ”.
+*/
+
 -- Arity-5 Form of fast tsp_semantic_headline with pre-computed arr & tsv
 CREATE OR REPLACE FUNCTION tsp_semantic_headline 
 (config REGCONFIG, haystack_arr TEXT[], content_tsv TSVECTOR, search_query TSQUERY, options TEXT DEFAULT ' ')
@@ -261,6 +313,7 @@ $$
 STABLE
 LANGUAGE plpgsql;
 
+-- OVERLOAD Arity-5 form, to infer the default_text_search_config for parsing
 -- Arity-4 Form of fast tsp_semantic_headline with pre-computed arr & tsv
 CREATE OR REPLACE FUNCTION tsp_semantic_headline 
 (haystack_arr TEXT[], content_tsv TSVECTOR, search_query TSQUERY, options TEXT DEFAULT ' ')
@@ -268,15 +321,24 @@ RETURNS TEXT AS
 $$
 BEGIN
     RETURN tsp_semantic_headline(current_setting('default_text_search_config')::REGCONFIG,
-	                         	haystack_arr,
-	                            content_tsv,
-								search_query, 
-								options);
+	                          	 haystack_arr,
+	                             content_tsv,
+								 search_query, 
+								 options);
 END;
 $$
 STABLE
 LANGUAGE plpgsql;
   
+/*
+Note: This form is the 1:1 replacement for ts_headline:
+
+Likewise, this function uses TS_HEADLINE under the hood to handle content that 
+does NOT use precomputed TEXT[] and TSVector columns. Rather, this implementation
+calls ts_headline to return fragments, and then applies the arity-5 form of
+tsp_semantic_headline to the results to achieve semantically accurate phrase
+highlighting.
+*/
 -- Arity-4 Form of simplified tsp_semantic_headline 
 CREATE OR REPLACE FUNCTION tsp_semantic_headline 
 (config REGCONFIG, content TEXT, user_search TSQUERY, options TEXT DEFAULT '')
@@ -298,6 +360,7 @@ $$
 STABLE
 LANGUAGE plpgsql;
 
+-- OVERLOAD Arity-4 form #2, to infer the default_text_search_config for parsing
 -- Arity-3 Form of simplified tsp_semantic_headline 
 CREATE OR REPLACE FUNCTION tsp_semantic_headline
 (content TEXT, user_search TSQUERY, options TEXT DEFAULT '')
@@ -312,6 +375,68 @@ END;
 $$
 STABLE
 LANGUAGE plpgsql;
+/*
+Function: tsp_to_tsquery
+
+Accepts:
+- config       REGCONFIG - PGSQL Text Search Language Configuration
+- query_string TEXT      - String of search terms connected with TSQuery
+                           operators.
+
+Akin to the builtin function `to_tsquery`, this function converts text to a 
+tsquery, normalizing words according to the specified or default configuration. 
+The words must be combined by valid tsquery operators.
+
+tsp_to_tsquery('english', 'The & Fat & Rats') → 'fat' & 'rat'
+
+For the purposes of a TSQuery, this function is the treatment for TSQueries for
+index-friendly positioning and is paralleled with tsp_indexable_text in TSVectors
+*/
+
+CREATE OR REPLACE FUNCTION tsp_to_tsquery(config REGCONFIG, query_string TEXT)
+RETURNS TSQUERY AS
+$$
+BEGIN
+    -- We perform the chararacter substitution twice to catch any terms with 
+	-- multiple character-delimiter substrings
+	query_string := ' ' || query_string || ' ';
+	query_string := regexp_replace(query_string, '(\w)([^[:alnum:]&^<>|\s]+)(\w)', E'\\1\\2\<1>\\3', 'g');
+	query_string := regexp_replace(query_string, '(\w)([^[:alnum:]&^<>|\s]+)(\w)', E'\\1\\2\<1>\\3', 'g');	    
+    
+	RETURN TO_TSQUERY(config, query_string);
+END;
+$$
+STABLE
+LANGUAGE plpgsql;
+
+-- OVERLOAD Arity-2 form, to infer the default_text_search_config for parsing
+CREATE OR REPLACE FUNCTION tsp_to_tsquery(query_string TEXT)
+RETURNS TSQUERY AS
+$$
+BEGIN    
+    RETURN tsp_to_tsquery(current_setting('default_text_search_config')::REGCONFIG, 
+	                        query_string);
+END;
+$$
+STABLE
+LANGUAGE plpgsql;
+/*
+Function: tsquery_to_table
+
+Accepts: 
+- config      REGCONFIG - PGSQL Text Search Language Configuration
+- input_query TEXT - the source text to be prepared, by having indexing tokens removed
+
+Divides a TSQuery into phrases separated by logical operators. For each phrase, applies
+tsquery_to_tsvector. For each resulting TSVector, we apply tsvector_to_table.
+
+Returns a table with each record representing a lexeme and position within a TSVector, 
+and for posterity each row also contains a phrase_vector TSVECTOR and the corresponding 
+phrase_query TSQUERY that produced the vector.
+
+In effect, this divides the TSQuery into a series of equivalent lexeme patters in a TSVector.
+*/
+
 CREATE OR REPLACE FUNCTION tsquery_to_table(config REGCONFIG, input_query TSQUERY)
 RETURNS TABLE(phrase_vector TSVECTOR, phrase_query TSQUERY, lexeme TEXT, pos SMALLINT) AS
 $$
@@ -319,24 +444,24 @@ BEGIN
 	RETURN QUERY 
 	(WITH phrases AS (SELECT phrase.phrase_vector, phrase.phrase_query 
 	                  FROM tsquery_to_tsvector(config, input_query) AS phrase)
-     SELECT phrases.phrase_vector, 
-            phrases.phrase_query,
-            word.lex, 
-            word.pos
-     FROM phrases, tsvector_to_table(phrases.phrase_vector) AS word);
+      SELECT phrases.phrase_vector, 
+             phrases.phrase_query,
+             word.lex, 
+             word.pos
+      FROM phrases, tsvector_to_table(phrases.phrase_vector) AS word);
 END;
 $$
 STABLE
 LANGUAGE plpgsql;
 
-
+-- OVERLOADS Arity-2 form, to infer the default_text_search_config for parsing
 CREATE OR REPLACE FUNCTION tsquery_to_table(input_query TSQUERY)
 RETURNS TABLE(phrase_vector TSVECTOR, phrase_query TSQUERY, lexeme TEXT, pos SMALLINT) AS
 $$
 BEGIN
 	RETURN QUERY 
 	(SELECT * FROM tsquery_to_table(current_setting('default_text_search_config')::REGCONFIG, 
-                                        input_query));
+                                       input_query));
 END;
 $$
 STABLE
@@ -344,6 +469,7 @@ LANGUAGE plpgsql;/*
 Function: tsquery_to_tsvector
 
 Accepts: 
+- config      REGCONFIG - PGSQL Text Search Language Configuration
 - input_query TSQuery - a well-formed TSQuery that is may be complex, containing 
   logical and phrase/distance operators
 
@@ -371,6 +497,8 @@ BEGIN
     input_text := regexp_replace(input_text, '\(|\)', '', 'g');
 
     RETURN QUERY 
+    -- ts_filter + setweight is used to remove dummy lexeme from TSVector
+    -- Set everything to weight A, set dummy word to D, filter for A, remove weights
     (SELECT setweight(ts_filter(setweight(setweight(phrase_vec, 'A'), 
                                           'D',
                                           ARRAY['xdummywordx']), 
@@ -378,7 +506,8 @@ BEGIN
                       'D') AS phrase_vector, 
             split_query AS phrase_query
      -- replace_multiple_strings will replace each of the <n> strings with n dummy word  entries
-     FROM (SELECT to_tsvector((SELECT replace_multiple_strings(split_query, 
+     FROM (SELECT to_tsvector(config,
+                              (SELECT replace_multiple_strings(split_query, 
                                                                array_agg('<' || g[1] || '>'), 
                                                                array_agg(REPEAT(' xdummywordx ', g[1]::SMALLINT - 1)))
                                -- regexp for all of the <n> terms in a phrase segment
@@ -391,6 +520,7 @@ $$
 STABLE
 LANGUAGE plpgsql;
 
+-- OVERLOAD Arity-2 form, to infer the default_text_search_config for parsing
 CREATE OR REPLACE FUNCTION tsquery_to_tsvector(input_query TSQUERY)
 RETURNS TABLE(phrase_vector TSVECTOR, phrase_query TSQUERY) AS
 $$
@@ -407,7 +537,10 @@ Accepts:
 - input_vector TSVECTOR - a TSVector containing BOTH lexemes and positions 
 
 Returns a table of the lexemes and positions of the TSVector, ordered by
-position ASC. In effect, this function UNNESTs a TSVector into a table.
+position ASC. In effect, this function UNNESTs a TSVector into a table 
+of lexemes and positions.
+
+This function can be used on any TSVector that includes positions.
 */
 
 CREATE OR REPLACE FUNCTION tsvector_to_table(input_vector TSVECTOR)

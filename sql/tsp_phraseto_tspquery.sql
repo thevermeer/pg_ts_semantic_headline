@@ -3,8 +3,10 @@ Function: tsp_phraseto_tsquery
 
 1:1 replacement for the built-in PHRASETO_TSQuery function:
 
-Accepts a common language string as a phrase, or ordered combination of multiple 
-words.
+Accepts 
+- config       REGCONFIG - PGSQL Text Search Language Configuration
+- query_string TEXT - a common language string as a phrase, or ordered 
+                      combination of multiple words.
 
 Returns a TSQuery that represents the query phrase after its treament with 
 tsp_indexable_text. This is done to attain positional alignment between raw text

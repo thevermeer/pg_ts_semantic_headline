@@ -1,3 +1,25 @@
+/*
+Function: tsp_query_matches
+Accepts: 
+- config       REGCONFIG - PGSQL Text Search Language Configuration
+- haystack_arr TEXT[]    - Ordered array of words, as they appear in the source
+                           document, delimited by spaces. Assumes text is preprocessed
+                           by tsp_indexable text function
+- content_tsv  TSVECTOR  - TSVector representation of the source document. Assumes text 
+                           is preprocessed by tsp_indexable text function to maintain
+                           the correct positionality of lexemes.
+- search_query TSQUERY   - TSQuery representation of a user-inputted search.
+- match_limit  INTEGER   - Number of matches to return from the start of the document.
+                           Defaults to 5.
+
+Returns a table of exact matches returned from the fuzzy TSQuery search, Each row contains:
+- words     TEXT     - the exact string found in the text
+- ts_query  TSQUERY  - the TSQuery phrase pattern that matches `words` text. A given TSQuery 
+                       can contain multiple phrase patterns
+- start_pos SMALLINT - the first word position of the found term within the document.
+- end_pos   SMALLINT - the last word position of the found term within the document.
+*/
+
 CREATE OR REPLACE FUNCTION tsp_query_matches
 (config REGCONFIG, haystack_arr TEXT[], content_tsv TSVECTOR, search_query TSQUERY, match_limit INTEGER DEFAULT 5)
 RETURNS TABLE(words TEXT, 
