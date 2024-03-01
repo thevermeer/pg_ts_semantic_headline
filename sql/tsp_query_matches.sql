@@ -20,6 +20,20 @@ Returns a table of exact matches returned from the fuzzy TSQuery search, Each ro
 - end_pos   SMALLINT - the last word position of the found term within the document.
 */
 
+CREATE OR REPLACE FUNCTION tsp_filter_tsv
+(config REGCONFIG, tsv TSVECTOR,  search_query TSQUERY)
+RETURNS TSVECTOR AS
+$$    
+BEGIN
+   RETURN 
+    (SELECT ts_filter(setweight(tsv, 'A', ARRAY_AGG(lexes)), '{a}')
+                    FROM (SELECT UNNEST(tsvector_to_array(vec.phrase_vector)) AS lexes
+                          FROM tsquery_to_tsvector(config, search_query) AS vec) AS query2vec);
+END;
+$$
+STABLE
+LANGUAGE plpgsql;
+
 CREATE OR REPLACE FUNCTION tsp_query_matches
 (config REGCONFIG, haystack_arr TEXT[], content_tsv TSVECTOR, search_query TSQUERY, match_limit INTEGER DEFAULT 5, disable_semantic_check BOOLEAN DEFAULT FALSE)
 RETURNS TABLE(words TEXT, 
@@ -28,9 +42,7 @@ RETURNS TABLE(words TEXT,
               end_pos SMALLINT) AS
 $$    
 BEGIN
-    content_tsv := (SELECT ts_filter(setweight(content_tsv, 'A', ARRAY_AGG(lexes)), '{a}')
-                    FROM (SELECT UNNEST(tsvector_to_array(vec.phrase_vector)) AS lexes
-                          FROM tsquery_to_tsvector(config, search_query) AS vec) AS query2vec);
+    content_tsv := tsp_filter_tsv(config, content_tsv, search_query);
     RETURN QUERY
     (   SELECT array_to_string(haystack_arr[first:last], ' '),           
                query,
@@ -43,6 +55,7 @@ BEGIN
                      phrase_query as query
               FROM (SELECT phrase_vector,
                            query_vec.phrase_query,
+                           (SELECT COUNT(*) FROM tsvector_to_table(phrase_vector)) AS query_length, 
                            haystack.lex,
                            haystack.pos AS pos, 
                            haystack.pos - query_vec.pos 
@@ -51,8 +64,8 @@ BEGIN
                     FROM tsquery_to_table(config, search_query) AS query_vec 
                     INNER JOIN tsvector_to_table(content_tsv) AS haystack 
                     ON haystack.lex = query_vec.lexeme) AS joined_terms
-              GROUP BY range_start, query, phrase_vector 
-              HAVING COUNT(*) = length(phrase_vector)) AS phrase_agg
+              GROUP BY range_start, query, query_length 
+              HAVING COUNT(*) = query_length) AS phrase_agg
         WHERE (last - first) = (SELECT MAX(pos) - MIN(pos) 
                                 FROM tsquery_to_table(config, query::TSQUERY))
         AND (disable_semantic_check OR TO_TSVECTOR(config, array_to_string(haystack_arr[first:last], ' ')) @@ query::TSQUERY)

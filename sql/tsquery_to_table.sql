@@ -20,7 +20,7 @@ RETURNS TABLE(phrase_vector TSVECTOR, phrase_query TSQUERY, lexeme TEXT, pos SMA
 $$
 BEGIN
 	RETURN QUERY 
-	(WITH phrases AS (SELECT phrase.phrase_vector, phrase.phrase_query 
+	(WITH phrases AS (SELECT DISTINCT(phrase.phrase_vector), phrase.phrase_query 
 	                  FROM tsquery_to_tsvector(config, input_query) AS phrase)
       SELECT phrases.phrase_vector, 
              phrases.phrase_query,
