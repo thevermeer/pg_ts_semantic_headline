@@ -49,7 +49,7 @@ Options:
 
 -- Arity-5 Form of fast tsp_semantic_headline with pre-computed arr & tsv
 CREATE OR REPLACE FUNCTION tsp_semantic_headline 
-(config REGCONFIG, haystack_arr TEXT[], content_tsv TSVECTOR, search_query TSQUERY, options TEXT DEFAULT ' ')
+(config REGCONFIG, haystack_arr TEXT[], content_tsv TSVECTOR, search_query TSQUERY, options TEXT DEFAULT '')
 RETURNS TEXT AS
 $$
 DECLARE
@@ -69,18 +69,24 @@ DECLARE
 BEGIN
     RETURN (
 		SELECT tsp_present_text(STRING_AGG(highlighted_text,
-		                                                   COALESCE(opts->>'FragmentDelimiter', '...')),
-		                                        COALESCE(opts->>'StopSel', '</b>'))
+		                                   COALESCE(opts->>'FragmentDelimiter', '...')),
+		                        COALESCE(opts->>'StopSel', '</b>'))
 		FROM (SELECT REGEXP_REPLACE(-- Aggregate the source text over a Range
-		                            ' ' || ARRAY_TO_STRING(haystack_arr[MIN(start_pos) - GREATEST((max_offset - (MAX(end_pos) - MIN(start_pos) / 2 + 1)), min_words): 
-		                                                                MAX(end_pos)   + GREATEST((max_offset - (MAX(end_pos) - MIN(start_pos) / 2 + 1)), min_words)], 
+		                            ' ' || 
+									ARRAY_TO_STRING(haystack_arr[MIN(start_pos) - GREATEST((max_offset - (MAX(end_pos) - MIN(start_pos) / 2 + 1)), min_words): 
+		                                                         MAX(end_pos)   + GREATEST((max_offset - (MAX(end_pos) - MIN(start_pos) / 2 + 1)), min_words)], 
 		                                                   ' ') || ' ', 
 				                    -- Capture Exact Matches over Range
 				                    E' (' || STRING_AGG(words, '|') || ') ', 
 				                    -- Replace with Tags wrapping Content
 				                    ' ' || tag_range || ' ', 
 				                    'g') AS highlighted_text
-		      FROM tsp_query_matches (config, haystack_arr, content_tsv, search_query, max_fragments + 3)
+		      FROM tsp_query_matches (config, 
+			                          haystack_arr, 
+									  content_tsv, 
+									  search_query, 
+									  max_fragments + 5, 
+									  COALESCE(opts->>'DisableSematics', 'FALSE')::BOOLEAN)
 			  GROUP BY (start_pos / (max_words + 1)) * (max_words + 1)
 			  ORDER BY COUNT(*) DESC, (start_pos / (max_words + 1)) * (max_words + 1)
 			  LIMIT max_fragments) AS frags);

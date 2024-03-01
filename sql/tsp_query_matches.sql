@@ -21,7 +21,7 @@ Returns a table of exact matches returned from the fuzzy TSQuery search, Each ro
 */
 
 CREATE OR REPLACE FUNCTION tsp_query_matches
-(config REGCONFIG, haystack_arr TEXT[], content_tsv TSVECTOR, search_query TSQUERY, match_limit INTEGER DEFAULT 5)
+(config REGCONFIG, haystack_arr TEXT[], content_tsv TSVECTOR, search_query TSQUERY, match_limit INTEGER DEFAULT 5, disable_semantic_check BOOLEAN DEFAULT FALSE)
 RETURNS TABLE(words TEXT, 
               ts_query TSQUERY, 
               start_pos SMALLINT, 
@@ -55,7 +55,7 @@ BEGIN
               HAVING COUNT(*) = length(phrase_vector)) AS phrase_agg
         WHERE (last - first) = (SELECT MAX(pos) - MIN(pos) 
                                 FROM tsquery_to_table(config, query::TSQUERY))
-        AND TO_TSVECTOR(config, array_to_string(haystack_arr[first:last], ' ')) @@ query::TSQUERY
+        AND (disable_semantic_check OR TO_TSVECTOR(config, array_to_string(haystack_arr[first:last], ' ')) @@ query::TSQUERY)
         LIMIT match_limit);
 END;
 $$
