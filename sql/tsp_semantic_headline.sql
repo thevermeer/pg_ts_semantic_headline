@@ -1,28 +1,17 @@
 /*
 Function: tsp_semantic_headline
+This function is intended as a 1:1 replacement for ts_headline and maintains
+the same signature as ts_headline
+
 Accepts: 
 - config       REGCONFIG - PGSQL Text Search Language Configuration
-- haystack_arr TEXT[]    - Ordered array of words, as they appear in the source
-                           document, delimited by spaces. Assumes text is 
-						   preprocessed by tsp_indexable text function
-- content_tsv  TSVECTOR  - TSVector representation of the source document. 
-                           Assumes text is preprocessed by tsp_indexable text 
-						   function to maintain the correct positionality of 
-						   lexemes.
-- search_query TSQUERY   - TSQuery representation of a user-inputted search.
+- content      TEXT      - The source text to be fragmented and highlighted
+- user_search  TSQuery   - TSQuery search as a collection of phrases, separated
+                           by logical operators.
 - options      TEXT      - Configuration options in the same form as the 
                            TS_HEADLINE options, with some semantic difference 
 						   in interpretting parameters.
 
-Internally, this function calls tsp_query_matches, aggregates ranges based on 
-frequency in range (akin to cover density), and returns results from the start 
-of the document forward. This diverges from the implementation of cover density 
-in ts_headline, and in making these sacrifices in order to better performance.
-
-As the internals of this function guarantee that each fragment will semantically 
-abide the TSQuery and its phrase semantics, in whole or in part, the goal is to
-return evidence of the search match, and thus we make concessions on headline 
-robustness, for speed of recall.
 
 Returns a string of 1 or more passages of text, with content matching one or more 
 phrase patterns in the TSQuery highlighted, meaning wrapped by the StartSel and 
@@ -47,71 +36,6 @@ Options:
    will be separated by this string. The default is “ ... ”.
 */
 
--- Arity-5 Form of fast tsp_semantic_headline with pre-computed arr & tsv
-CREATE OR REPLACE FUNCTION tsp_semantic_headline 
-(config REGCONFIG, haystack_arr TEXT[], content_tsv TSVECTOR, search_query TSQUERY, options TEXT DEFAULT '')
-RETURNS TEXT AS
-$$
-DECLARE
-    -- Parse Options string to JSON map --
-    opts          JSON    = (SELECT JSON_OBJECT_AGG(grp[1], COALESCE(grp[2], grp[3])) AS opt 
-                             FROM REGEXP_MATCHES(options, 
-                                                 '(\w+)=(?:"([^"]+)"|((?:(?![\s,]+\w+=).)+))', 
-                                                 'g') as matches(grp));
-    -- Options Map and Default Values --
-    tag_range     TEXT    = COALESCE(opts->>'StartSel', '<b>') || 
-	                        E'\\1' || 
-							COALESCE(opts->>'StopSel', '</b>');
-    min_words     INTEGER = COALESCE((opts->>'MinWords')::SMALLINT / 2, 10);
-    max_words     INTEGER = COALESCE((opts->>'MaxWords')::SMALLINT, 30);
-    max_offset    INTEGER = max_words / 2 + 1;
-    max_fragments INTEGER = COALESCE((opts->>'MaxFragments')::INTEGER, 1);
-BEGIN
-    RETURN (
-		SELECT tsp_present_text(STRING_AGG(highlighted_text,
-		                                   COALESCE(opts->>'FragmentDelimiter', '...')),
-		                        COALESCE(opts->>'StopSel', '</b>'))
-		FROM (SELECT REGEXP_REPLACE(-- Aggregate the source text over a Range
-		                            ' ' || 
-									ARRAY_TO_STRING(haystack_arr[MIN(start_pos) - GREATEST((max_offset - (MAX(end_pos) - MIN(start_pos) / 2 + 1)), min_words): 
-		                                                         MAX(end_pos)   + GREATEST((max_offset - (MAX(end_pos) - MIN(start_pos) / 2 + 1)), min_words)], 
-		                                                   ' ') || ' ', 
-				                    -- Capture Exact Matches over Range
-				                    E' (' || STRING_AGG(words, '|') || ') ', 
-				                    -- Replace with Tags wrapping Content
-				                    ' ' || tag_range || ' ', 
-				                    'g') AS highlighted_text
-		      FROM tsp_query_matches (config, 
-			                          haystack_arr, 
-									  content_tsv, 
-									  search_query, 
-									  max_fragments + 6, 
-									  COALESCE(opts->>'DisableSematics', 'FALSE')::BOOLEAN)
-			  GROUP BY (start_pos / (max_words + 1)) * (max_words + 1)
-			  ORDER BY COUNT(*) DESC, (start_pos / (max_words + 1)) * (max_words + 1)
-			  LIMIT max_fragments) AS frags);
-END;
-$$
-STABLE
-LANGUAGE plpgsql;
-
--- OVERLOAD Arity-5 form, to infer the default_text_search_config for parsing
--- Arity-4 Form of fast tsp_semantic_headline with pre-computed arr & tsv
-CREATE OR REPLACE FUNCTION tsp_semantic_headline 
-(haystack_arr TEXT[], content_tsv TSVECTOR, search_query TSQUERY, options TEXT DEFAULT ' ')
-RETURNS TEXT AS
-$$
-BEGIN
-    RETURN tsp_semantic_headline(current_setting('default_text_search_config')::REGCONFIG,
-	                          	 haystack_arr,
-	                             content_tsv,
-								 search_query, 
-								 options);
-END;
-$$
-STABLE
-LANGUAGE plpgsql;
-  
 /*
 Note: This form is the 1:1 replacement for ts_headline:
 
@@ -129,14 +53,13 @@ $$
 DECLARE cleaned_content TEXT = ts_headline(config, 
                                            content, 
 										   user_search, 
-										   'StartSel="",StopSel="",' || options);
+										   'StartSel="",StopSel="",FragmentDelimiter= XDUMMYFRAGMENTX ' || options);
 BEGIN
-	cleaned_content := tsp_indexable_text(cleaned_content);
-	RETURN tsp_semantic_headline(config,
-	                            regexp_split_to_array(cleaned_content, '[\s]+'), 
-                                TO_TSVECTOR(config, cleaned_content),
-                                user_search,
-                                options);
+	RETURN tsp_fast_headline(config,
+	                         tsp_to_text_array(cleaned_content), 
+                             tsp_to_tsvector(config, UNACCENT(cleaned_content)),
+                             UNACCENT(user_search::TEXT)::TSQUERY,
+                             options);
 END;
 $$
 STABLE
