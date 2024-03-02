@@ -25,16 +25,16 @@ Use the following query to determine the blank characters used by each of the
 installed PGSQL Text Search Language configurations. Note, we range from 2 to 
 the unicode limit of 55295, and interpret each of the characters in each of 
 the installed languages. We omit character 0001 as that is a bell character 
-used in computed string and thus omitted. The following query SHOULD return 64 
-rows (representing each of the 64 space characters), each with a count of 29 
-(representing the number of default languages in the system).
-
+used in computed string and thus omitted. The following query SHOULD return 217 
+rows (representing each of the 64 space characters, plus the character that, 
+when UNACCENTed, create space characters in pgsql ts lexizing), each with a 
+count of 29 (representing the number of default languages in the system).
+Use:
+-------------------------------------------------------------------------------
 SELECT 
 alias, seqno, chr(seqno), count(*), '\u' || lpad(to_hex(seqno)::TEXT, 4, '0') as unicode_char
-FROM (SELECT 
-             cfgname::REGCONFIG AS lang  FROM pg_ts_config
-             
-             ) AS tlang,
+FROM (SELECT cfgname::REGCONFIG AS lang  FROM pg_ts_config) AS tlang,
+     -- The important part is to unaccent the characters BEFORE ts_debug!!!
 	 (SELECT (SELECT STRING_AGG(alias, '') as alias FROM ts_debug(UNACCENT(chr(seqno)))) AS alias, 
 	         chr(seqno) AS char, 
 	         seqno 
@@ -43,15 +43,15 @@ WHERE substring(alias, 'blank') IS NOT NULL
 -- omit the actual space character
 AND seqno <> 32
 GROUP BY seqno, alias;
+-------------------------------------------------------------------------------
+At the time of writing, in pgsql14, all 217 rows should return a count of 29.
+This will be a prime assertion in testing. 
 
 In order to actually aggregate the collection of unicode characters used below, run:
-
+-------------------------------------------------------------------------------
 WITH blanks AS 
 (SELECT alias, seqno, chr(seqno), count(*), '\u' || lpad(to_hex(seqno)::TEXT, 4, '0') as unicode_char
-FROM (SELECT 
-             cfgname::REGCONFIG AS lang  FROM pg_ts_config
-             
-             ) AS tlang,
+FROM (SELECT cfgname::REGCONFIG AS lang  FROM pg_ts_config) AS tlang,
 	 (SELECT (SELECT STRING_AGG(alias, '') as alias FROM ts_debug(UNACCENT(chr(seqno)))) AS alias, 
 	         chr(seqno) AS char, 
 	         seqno 
@@ -61,6 +61,7 @@ WHERE substring(alias, 'blank') IS NOT NULL
 AND seqno <> 32
 GROUP BY seqno, alias)
 SELECT STRING_AGG(unicode_char, '|') from blanks;
+-------------------------------------------------------------------------------
 */
 
 CREATE OR REPLACE FUNCTION tsp_indexable_text(result_string text)

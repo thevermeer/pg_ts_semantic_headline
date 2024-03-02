@@ -85,7 +85,7 @@ BEGIN
 			                          haystack_arr, 
 									  content_tsv, 
 									  search_query, 
-									  max_fragments + 5, 
+									  max_fragments + 6, 
 									  COALESCE(opts->>'DisableSematics', 'FALSE')::BOOLEAN)
 			  GROUP BY (start_pos / (max_words + 1)) * (max_words + 1)
 			  ORDER BY COUNT(*) DESC, (start_pos / (max_words + 1)) * (max_words + 1)

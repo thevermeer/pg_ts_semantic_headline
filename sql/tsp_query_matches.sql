@@ -18,6 +18,22 @@ Returns a table of exact matches returned from the fuzzy TSQuery search, Each ro
                        can contain multiple phrase patterns
 - start_pos SMALLINT - the first word position of the found term within the document.
 - end_pos   SMALLINT - the last word position of the found term within the document.
+
+Reduces the TSQuery into a collection of TSVector phrase patterns; Reduces the source
+TSVector to a filtered TSV containing only the lexemes in the TSQuery. JOINs the 
+exploded TSQuery (as a table of lexemes and positions) to the TSvector (also as a table)
+of lexemes and positions. JOINing, reducing and GROUPing, herein we implement the 
+matching pattern inherent in the TSVECTOR @@ TSQUERY searching operation.
+
+Performing this lookup on pre-computed, pre-treated (ts_indexable_text + UNACCENT) 
+ts_vectors is surprisingly fast. Using a pre-computer TEXT[] array as a RECALL index
+drastically reduces the computational and memory overhead of this function.
+
+Support TSQuery logical operators (&, |, !) as well as phrase distance/proximity 
+operators (<->, <n>).
+
+Currently does NOT support TSQuery Wildcards (*), but that is the only known 
+exception at present.
 */
 
 
@@ -41,6 +57,7 @@ CREATE OR REPLACE FUNCTION tsp_query_matches
 (config REGCONFIG, haystack_arr TEXT[], content_tsv TSVECTOR, search_query TSQUERY, 
  match_limit INTEGER DEFAULT 5, 
  disable_semantic_check BOOLEAN DEFAULT FALSE)
+
 RETURNS TABLE(words TEXT, 
               ts_query TSQUERY, 
               start_pos SMALLINT, 
@@ -75,7 +92,8 @@ BEGIN
               HAVING COUNT(*) = query_length) AS phrase_agg
         WHERE (last - first) = (SELECT MAX(pos) - MIN(pos) 
                                 FROM tsquery_to_table(config, query::TSQUERY))
-        AND (disable_semantic_check OR TO_TSVECTOR(config, array_to_string(haystack_arr[first:last], ' ')) @@ query::TSQUERY)
+        AND (disable_semantic_check 
+             OR TSP_TO_TSVECTOR(config, array_to_string(haystack_arr[first:last], ' ')) @@ query::TSQUERY)
         LIMIT match_limit);
 END;
 $$
