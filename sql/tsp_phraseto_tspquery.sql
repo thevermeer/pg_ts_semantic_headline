@@ -18,7 +18,7 @@ CREATE OR REPLACE FUNCTION tsp_phraseto_tsquery(config REGCONFIG, query_string T
 RETURNS TSQUERY AS
 $$
 BEGIN
-	RETURN PHRASETO_TSQUERY(config, tsp_indexable_text(query_string));
+	RETURN PHRASETO_TSQUERY(config, tsp_indexable_text(UNACCENT(query_string)));
 END;
 $$
 STABLE
