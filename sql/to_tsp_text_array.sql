@@ -1,11 +1,11 @@
 /*
-Function: tsp_to_text_array
+Function: TO_TSP_TEXT_ARRAY
 
 Simple wrapper function to ensure we split text arrays the same time, every time.
 This is very much a convenience wrapper.
 */
 
-CREATE OR REPLACE FUNCTION tsp_to_text_array(string TEXT)
+CREATE OR REPLACE FUNCTION TO_TSP_TEXT_ARRAY(string TEXT)
 RETURNS TEXT[] AS
 $$
 BEGIN

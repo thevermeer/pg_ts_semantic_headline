@@ -54,7 +54,7 @@ STABLE
 LANGUAGE plpgsql;
 
 CREATE OR REPLACE FUNCTION TSP_QUERY_MATCHES
-(config REGCONFIG, haystack_arr TEXT[], content_tsv TSVECTOR, search_query TSPQUERY, 
+(config REGCONFIG, haystack_arr TEXT[], content_tsv TSPVECTOR, search_query TSPQUERY, 
  match_limit INTEGER DEFAULT 5, 
  disable_semantic_check BOOLEAN DEFAULT FALSE)
 
@@ -93,7 +93,7 @@ BEGIN
         WHERE (last - first) = (SELECT MAX(pos) - MIN(pos) 
                                 FROM TSQUERY_TO_TABLE(config, query))
         AND (disable_semantic_check 
-             OR TSP_TO_TSVECTOR(config, array_to_string(haystack_arr[first:last], ' ')) @@ query::TSQUERY)
+             OR TO_TSPVECTOR(config, array_to_string(haystack_arr[first:last], ' ')) @@ query::TSQUERY)
         LIMIT match_limit);
 END;
 $$
@@ -103,7 +103,7 @@ LANGUAGE plpgsql;
 
 -- OVERLOAD Arity-5 form, to infer the default_text_search_config for parsing
 CREATE OR REPLACE FUNCTION TSP_QUERY_MATCHES
-(haystack_arr TEXT[], content_tsv TSVECTOR, search_query TSPQUERY, match_limit INTEGER DEFAULT 5)
+(haystack_arr TEXT[], content_tsv TSPVECTOR, search_query TSPQUERY, match_limit INTEGER DEFAULT 5)
 RETURNS TABLE(words TEXT, 
               ts_query TSPQUERY, 
               start_pos SMALLINT, 

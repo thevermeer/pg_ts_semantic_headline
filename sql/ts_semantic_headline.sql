@@ -64,8 +64,8 @@ BEGIN
     headline := regexp_replace(' ' || headline || ' ', 'XDUMMYFRAGMENTX', ' some other stuff ', 'g');
     IF (OPTIONS <> '') THEN options := ',' || options; END IF;
     RETURN COALESCE(TS_FAST_HEADLINE(config,
-	                                   tsp_to_text_array(headline), 
-                                      TSP_TO_TSVECTOR(config, headline), 
+	                                   TO_TSP_TEXT_ARRAY(headline), 
+                                      TO_TSPVECTOR(config, headline), 
                                       user_search,
                                       'MaxFragments=30,MinWords=64,MaxWords=64' || options),
                     headline);

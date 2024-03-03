@@ -49,7 +49,7 @@ Options:
 
 -- Arity-5 Form of fast TS_FAST_HEADLINE with pre-computed arr & tsv
 CREATE OR REPLACE FUNCTION TS_FAST_HEADLINE 
-(config REGCONFIG, haystack_arr TEXT[], content_tsv TSVECTOR, search_query TSPQUERY, options TEXT DEFAULT '')
+(config REGCONFIG, haystack_arr TEXT[], content_tsv TSPVECTOR, search_query TSPQUERY, options TEXT DEFAULT '')
 RETURNS TEXT AS
 $$
 DECLARE
@@ -98,15 +98,15 @@ LANGUAGE plpgsql;
 -- OVERLOAD Arity-5 form, to infer the default_text_search_config for parsing
 -- Arity-4 Form of fast TS_FAST_HEADLINE with pre-computed arr & tsv
 CREATE OR REPLACE FUNCTION TS_FAST_HEADLINE 
-(haystack_arr TEXT[], content_tsv TSVECTOR, search_query TSPQUERY, options TEXT DEFAULT ' ')
+(haystack_arr TEXT[], content_tsv TSPVECTOR, search_query TSPQUERY, options TEXT DEFAULT '')
 RETURNS TEXT AS
 $$
 BEGIN
     RETURN TS_FAST_HEADLINE(current_setting('default_text_search_config')::REGCONFIG,
-	                         haystack_arr,
-	                         content_tsv,
-							 search_query, 
-							 options);
+	                        haystack_arr,
+	                        content_tsv,
+							search_query, 
+							options);
 END;
 $$
 STABLE
