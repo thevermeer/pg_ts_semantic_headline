@@ -1,5 +1,5 @@
 /*
-Function: tsp_present_text
+Function: TSP_PRESENT_TEXT
 Accepts: 
 - input_text    TEXT - the source text to be prepared, by having indexing tokens 
                        removed
@@ -9,10 +9,10 @@ Accepts:
 
 Returns a string with the indexing tokens of Bell Character (u0001) + SPACE removed, 
 including those sequences which are divided by a specified end_delimiter. Reverses 
-the effect of `tsp_indexable_text` function.
+the effect of `TSP_INDEXABLE_TEXT` function.
 */
 
-CREATE OR REPLACE FUNCTION tsp_present_text (input_text TEXT, end_delimiter TEXT DEFAULT '</b>')
+CREATE OR REPLACE FUNCTION TSP_PRESENT_TEXT (input_text TEXT, end_delimiter TEXT DEFAULT '</b>')
 RETURNS TEXT AS
 $$
 BEGIN

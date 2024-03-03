@@ -38,9 +38,9 @@ BEGIN
                                 '{a}'), 
                       'D') AS phrase_vector, 
             split_query AS phrase_query
-     -- replace_multiple_strings will replace each of the <n> strings with n dummy word  entries
+     -- REPLACE_MULTIPLE_STRINGS will replace each of the <n> strings with n dummy word  entries
      FROM (SELECT to_tsvector(config,
-                              (SELECT replace_multiple_strings(split_query, 
+                              (SELECT REPLACE_MULTIPLE_STRINGS(split_query, 
                                                                array_agg('<' || g[1] || '>'), 
                                                                array_agg(REPEAT(' xdummywordx ', g[1]::SMALLINT - 1)))
                                -- regexp for all of the <n> terms in a phrase segment

@@ -8,17 +8,17 @@ Accepts
 - query_string TEXT - a common language string as a phrase, or ordered 
                       combination of multiple words.
 
-Returns a TSQuery that represents the query phrase after its treament with 
-tsp_indexable_text. This is done to attain positional alignment between raw text
+Returns a TSPQuery that represents the query phrase after its treament with 
+TSP_INDEXABLE_TEXT. This is done to attain positional alignment between raw text
 and the rendered TSVector. As we are searching on a treated vector, we need to treat
-the phrase used to render a TSQuery in the same way
+the phrase used to render a TSPQuery in the same way
 */
 
 CREATE OR REPLACE FUNCTION phraseto_tspquery(config REGCONFIG, query_string TEXT)
 RETURNS TSPQUERY AS
 $$
 BEGIN
-	RETURN PHRASETO_TSQUERY(config, tsp_indexable_text(UNACCENT(query_string)));
+	RETURN PHRASETO_TSQUERY(config, TSP_INDEXABLE_TEXT(UNACCENT(query_string)))::TSPQuery;
 END;
 $$
 STABLE
@@ -30,7 +30,7 @@ RETURNS TSPQUERY AS
 $$
 BEGIN    
     RETURN phraseto_tspquery(current_setting('default_text_search_config')::REGCONFIG, 
-	                            query_string);
+	                         query_string);
 END;
 $$
 STABLE

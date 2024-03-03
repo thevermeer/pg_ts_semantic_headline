@@ -9,7 +9,7 @@ CREATE OR REPLACE FUNCTION tsp_to_text_array(string TEXT)
 RETURNS TEXT[] AS
 $$
 BEGIN
-	RETURN REGEXP_SPLIT_TO_ARRAY(tsp_indexable_text(string), '[\s]+');
+	RETURN REGEXP_SPLIT_TO_ARRAY(TSP_INDEXABLE_TEXT(string), '[\s]+');
 END;
 $$
 STABLE

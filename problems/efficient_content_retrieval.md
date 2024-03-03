@@ -15,15 +15,15 @@ DECLARE search_vec TSVECTOR;
 BEGIN
 	search_vec := TO_TSVECTOR(substitute_characters(user_search));
 	content := substitute_characters(content);
-	SELECT ARRAY[MIN(pos), MAX(pos)] FROM tsvector_to_table(search_vec) INTO minmaxarr;
+	SELECT ARRAY[MIN(pos), MAX(pos)] FROM TSVECTOR_TO_TABLE(search_vec) INTO minmaxarr;
 	
     RETURN QUERY 
      (SELECT match
 	  FROM (SELECT get_word_range(content, first, last) AS match 
 	   	    FROM (SELECT MIN(pos) AS first, MAX(pos) AS last 
 		  		  FROM (SELECT haystack.pos, haystack.pos - (query_vec.pos - minmaxarr[1]) as range_start
-	           		    FROM tsvector_to_table(content_tsv) AS haystack 
-			            INNER JOIN tsvector_to_table(search_vec) AS query_vec 
+	           		    FROM TSVECTOR_TO_TABLE(content_tsv) AS haystack 
+			            INNER JOIN TSVECTOR_TO_TABLE(search_vec) AS query_vec 
 			            ON haystack.lex = query_vec.lex)
 	      		  GROUP BY range_start)
 	  		WHERE (minmaxarr[2] - minmaxarr[1]) = (last - first)
@@ -112,7 +112,7 @@ SELECT ts_filter(setweight(to_tsvector('find this needle and that needle in the 
 'needl':3A,6A
 ```
 
-Ultimately, using the combination of `setweight` and `ts_filter`, we will substitute `tsvector_to_table(search_vec)` for `tsvector_to_table(ts_filter(setweight(content_tsv, 'A', tsvector_to_array(search_vec)), '{a}'))` and...
+Ultimately, using the combination of `setweight` and `ts_filter`, we will substitute `TSVECTOR_TO_TABLE(search_vec)` for `TSVECTOR_TO_TABLE(ts_filter(setweight(content_tsv, 'A', tsvector_to_array(search_vec)), '{a}'))` and...
 ```
 EXPLAIN ANALYZE 
 SELECT ts_exact_phrase_matches(indexed_content, content_tsv, 'Eighteen years!” am the passenger') 
@@ -159,18 +159,18 @@ DECLARE search_vec TSVECTOR;
 BEGIN
 	user_search := prepare_text_for_tsvector(user_search);
 	search_vec  := TO_TSVECTOR(user_search);
-	minmaxarr   := (SELECT ARRAY[MIN(pos), MAX(pos)] FROM tsvector_to_table(search_vec));
+	minmaxarr   := (SELECT ARRAY[MIN(pos), MAX(pos)] FROM TSVECTOR_TO_TABLE(search_vec));
 	
     RETURN QUERY 
           (SELECT replace(array_to_string(haystack_arr[first:last], ' '), chr(1) || ' ', '')
            FROM (SELECT MIN(pos) AS first, MAX(pos) AS last 
                  FROM (SELECT haystack.pos, 
                               haystack.pos - (query_vec.pos - minmaxarr[1]) as range_start
-                       FROM (SELECT lex, pos FROM tsvector_to_table(ts_filter(setweight(content_tsv, 
+                       FROM (SELECT lex, pos FROM TSVECTOR_TO_TABLE(ts_filter(setweight(content_tsv, 
 	           		                                                                     'A', 
 	           		                                                                     tsvector_to_array(search_vec)), 
 	           		                                                           '{a}'))) AS haystack 
-			           INNER JOIN tsvector_to_table(search_vec) AS query_vec 
+			           INNER JOIN TSVECTOR_TO_TABLE(search_vec) AS query_vec 
 			           ON haystack.lex = query_vec.lex)
 	      		 GROUP BY range_start)
            WHERE (minmaxarr[2] - minmaxarr[1]) = (last - first)

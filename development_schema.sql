@@ -19,7 +19,7 @@ CREATE OR REPLACE FUNCTION trg_update_content_tsv()
 RETURNS TRIGGER AS $$
 DECLARE result_string TEXT;
 BEGIN
-	NEW.indexed_content   := tsp_indexable_text(NEW.content);
+	NEW.indexed_content   := TSP_INDEXABLE_TEXT(NEW.content);
     NEW.content_tsv       := to_tsvector(NEW.indexed_content);
     NEW.content_exact_tsv := to_tsvector('simple', NEW.indexed_content);    
     NEW.content_arr       := regexp_split_to_array(NEW.indexed_content, '[\s]+');

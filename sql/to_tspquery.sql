@@ -13,7 +13,7 @@ The words must be combined by valid tsquery operators.
 TO_TSPQUERY('english', 'The & Fat & Rats') → 'fat' & 'rat'
 
 For the purposes of a TSQuery, this function is the treatment for TSQueries for
-index-friendly positioning and is paralleled with tsp_indexable_text in TSVectors
+index-friendly positioning and is paralleled with TSP_INDEXABLE_TEXT in TSVectors
 */
 
 CREATE OR REPLACE FUNCTION TO_TSPQUERY(config REGCONFIG, query_string TEXT)
@@ -26,7 +26,7 @@ BEGIN
 	query_string := regexp_replace(query_string, '(\w)([^[:alnum:]&^<>|\s]+)(\w)', E'\\1\\2\<1>\\3', 'g');
 	query_string := regexp_replace(query_string, '(\w)([^[:alnum:]&^<>|\s]+)(\w)', E'\\1\\2\<1>\\3', 'g');	    
     
-	RETURN TO_TSQUERY(config, query_string);
+	RETURN TO_TSQUERY(config, query_string)::TSPQuery;
 END;
 $$
 STABLE
@@ -38,7 +38,7 @@ RETURNS TSPQuery AS
 $$
 BEGIN    
     RETURN TO_TSPQUERY(current_setting('default_text_search_config')::REGCONFIG, 
-	                        query_string);
+	                   query_string);
 END;
 $$
 STABLE

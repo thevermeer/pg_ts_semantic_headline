@@ -1,4 +1,4 @@
-CREATE OR REPLACE FUNCTION replace_multiple_strings(source_text text, find_array text[], replace_array text[])
+CREATE OR REPLACE FUNCTION REPLACE_MULTIPLE_STRINGS(source_text text, find_array text[], replace_array text[])
 RETURNS text AS
 $$
 DECLARE

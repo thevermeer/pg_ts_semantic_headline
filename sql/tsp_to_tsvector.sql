@@ -13,14 +13,14 @@ The words must be combined by valid tsquery operators.
 TO_TSPQUERY('english', 'The & Fat & Rats') → 'fat' & 'rat'
 
 For the purposes of a TSQuery, this function is the treatment for TSQueries for
-index-friendly positioning and is paralleled with tsp_indexable_text in TSVectors
+index-friendly positioning and is paralleled with TSP_INDEXABLE_TEXT in TSVectors
 */
 
 CREATE OR REPLACE FUNCTION tsp_to_tsvector(config REGCONFIG, string TEXT)
 RETURNS TSVECTOR AS
 $$
 BEGIN
-	RETURN TO_TSVECTOR(config, tsp_indexable_text(unaccent(string)));
+	RETURN TO_TSVECTOR(config, TSP_INDEXABLE_TEXT(unaccent(string)));
 END;
 $$
 STABLE

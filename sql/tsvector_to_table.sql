@@ -1,5 +1,5 @@
 /*
-Function: tsvector_to_table
+Function: TSVECTOR_TO_TABLE
 
 Accepts: 
 - input_vector TSVECTOR - a TSVector containing BOTH lexemes and positions 
@@ -11,7 +11,7 @@ of lexemes and positions.
 This function can be used on any TSVector that includes positions.
 */
 
-CREATE OR REPLACE FUNCTION tsvector_to_table(input_vector TSVECTOR)
+CREATE OR REPLACE FUNCTION TSVECTOR_TO_TABLE(input_vector TSVECTOR)
 RETURNS TABLE(lex TEXT, pos SMALLINT) AS
 $$
 BEGIN

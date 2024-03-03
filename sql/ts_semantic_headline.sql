@@ -7,7 +7,8 @@ Accepts:
 - config       REGCONFIG - PGSQL Text Search Language Configuration
 - content      TEXT      - The source text to be fragmented and highlighted
 - user_search  TSQuery   - TSQuery search as a collection of phrases, separated
-                           by logical operators.
+                           by logical operators. Do NOT pass a TSPQuery to this 
+                           function.
 - options      TEXT      - Configuration options in the same form as the 
                            TS_HEADLINE options, with some semantic difference 
 						   in interpretting parameters.
@@ -42,7 +43,7 @@ Note: This form is the 1:1 replacement for ts_headline:
 Likewise, this function uses TS_HEADLINE under the hood to handle content that 
 does NOT use precomputed TEXT[] and TSVector columns. Rather, this implementation
 calls ts_headline to return fragments, and then applies the arity-5 form of
-ts_semantic_headline to the results to achieve semantically accurate phrase
+TS_SEMANTIC_HEADLINE to the results to achieve semantically accurate phrase
 highlighting.
 */
 
@@ -61,11 +62,12 @@ BEGIN
                                               E'\\4 <-> \\5',
                                               'g'));
     headline := regexp_replace(' ' || headline || ' ', 'XDUMMYFRAGMENTX', ' some other stuff ', 'g');
-    RETURN COALESCE(tsp_fast_headline(config,
+    IF (OPTIONS <> '') THEN options := ',' || options; END IF;
+    RETURN COALESCE(TS_FAST_HEADLINE(config,
 	                                   tsp_to_text_array(headline), 
                                       TSP_TO_TSVECTOR(config, headline), 
                                       user_search,
-                                      'MaxFragments=30,MinWords=200,MaxWords=200,' || options),
+                                      'MaxFragments=30,MinWords=64,MaxWords=64' || options),
                     headline);
 END;
 $$
@@ -73,7 +75,7 @@ STABLE
 LANGUAGE plpgsql;
 
 -- OVERLOAD Arity-4 form #2, to infer the default_text_search_config for parsing
--- Arity-3 Form of simplified ts_semantic_headline 
+-- Arity-3 Form of simplified TS_SEMANTIC_HEADLINE 
 CREATE OR REPLACE FUNCTION TS_SEMANTIC_HEADLINE
 (content TEXT, user_search TSQUERY, options TEXT DEFAULT '')
 RETURNS TEXT AS

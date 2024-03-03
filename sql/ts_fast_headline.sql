@@ -1,5 +1,5 @@
 /*
-Function: tsp_fast_headline
+Function: TS_FAST_HEADLINE
 Accepts: 
 - config       REGCONFIG - PGSQL Text Search Language Configuration
 - haystack_arr TEXT[]    - Ordered array of words, as they appear in the source
@@ -14,7 +14,7 @@ Accepts:
                            TS_HEADLINE options, with some semantic difference 
 						   in interpretting parameters.
 
-Internally, this function calls tsp_query_matches, aggregates ranges based on 
+Internally, this function calls TSP_QUERY_MATCHES, aggregates ranges based on 
 frequency in range (akin to cover density), and returns results from the start 
 of the document forward. This diverges from the implementation of cover density 
 in ts_headline, and in making these sacrifices in order to better performance.
@@ -47,8 +47,8 @@ Options:
    will be separated by this string. The default is “ ... ”.
 */
 
--- Arity-5 Form of fast tsp_fast_headline with pre-computed arr & tsv
-CREATE OR REPLACE FUNCTION tsp_fast_headline 
+-- Arity-5 Form of fast TS_FAST_HEADLINE with pre-computed arr & tsv
+CREATE OR REPLACE FUNCTION TS_FAST_HEADLINE 
 (config REGCONFIG, haystack_arr TEXT[], content_tsv TSVECTOR, search_query TSPQUERY, options TEXT DEFAULT '')
 RETURNS TEXT AS
 $$
@@ -68,7 +68,7 @@ DECLARE
     max_fragments INTEGER = COALESCE((opts->>'MaxFragments')::INTEGER, 1);
 BEGIN
     RETURN (
-		SELECT tsp_present_text(STRING_AGG(highlighted_text,
+		SELECT TSP_PRESENT_TEXT(STRING_AGG(highlighted_text,
 		                                   COALESCE(opts->>'FragmentDelimiter', '...')),
 		                        COALESCE(opts->>'StopSel', '</b>'))
 		FROM (SELECT REGEXP_REPLACE(-- Aggregate the source text over a Range
@@ -81,7 +81,7 @@ BEGIN
 				                    -- Replace with Tags wrapping Content
 				                    ' ' || tag_range || ' ', 
 				                    'g') AS highlighted_text
-		      FROM tsp_query_matches (config, 
+		      FROM TSP_QUERY_MATCHES (config, 
 			                          haystack_arr, 
 									  content_tsv, 
 									  search_query, 
@@ -96,13 +96,13 @@ STABLE
 LANGUAGE plpgsql;
 
 -- OVERLOAD Arity-5 form, to infer the default_text_search_config for parsing
--- Arity-4 Form of fast tsp_fast_headline with pre-computed arr & tsv
-CREATE OR REPLACE FUNCTION tsp_fast_headline 
+-- Arity-4 Form of fast TS_FAST_HEADLINE with pre-computed arr & tsv
+CREATE OR REPLACE FUNCTION TS_FAST_HEADLINE 
 (haystack_arr TEXT[], content_tsv TSVECTOR, search_query TSPQUERY, options TEXT DEFAULT ' ')
 RETURNS TEXT AS
 $$
 BEGIN
-    RETURN tsp_fast_headline(current_setting('default_text_search_config')::REGCONFIG,
+    RETURN TS_FAST_HEADLINE(current_setting('default_text_search_config')::REGCONFIG,
 	                         haystack_arr,
 	                         content_tsv,
 							 search_query, 

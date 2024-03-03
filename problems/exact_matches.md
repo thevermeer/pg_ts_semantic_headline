@@ -80,7 +80,7 @@ jump	4
 
 For our purposes, we can make this code reusable and create a function that accepts a TSVector and returns a table of lexemes and positions:
 ```
-CREATE OR REPLACE FUNCTION tsvector_to_table(input_vector TSVECTOR)
+CREATE OR REPLACE FUNCTION TSVECTOR_TO_TABLE(input_vector TSVECTOR)
 RETURNS TABLE(lex TEXT, pos SMALLINT) AS
 $$
 BEGIN
@@ -99,8 +99,8 @@ In order to compute where the pattern of the query/needle occurs in the haystack
 To begin, let's join the positions' tables for the needle/query and haystack:
 ```
 SELECT query_vec.lex, query_vec.pos AS pos_in_needle, haystack.pos as pos_in_haystack
-FROM tsvector_to_table(to_tsvector('needle to find')) AS query_vec
-INNER JOIN tsvector_to_table(to_tsvector('finding? difficult is the needling to find in the needles or the haystack with needles I find')) AS haystack
+FROM TSVECTOR_TO_TABLE(to_tsvector('needle to find')) AS query_vec
+INNER JOIN TSVECTOR_TO_TABLE(to_tsvector('finding? difficult is the needling to find in the needles or the haystack with needles I find')) AS haystack
 ON haystack.lex = query_vec.lex;
 ```
 Which produces:
@@ -115,14 +115,14 @@ needl	1	5
 needl	1	15
 ```
 
-Here, in may not be perfectly obvious, however the following 2 rows comprise the sought query pattern of `'needle to find'`. In order to we are going to calculate the relative position of a haystack lexeme in the needle pattern; to do that, we need the MIN(pos) in the needle's TSVector. For the sake of readability, we are going to pull the query's TSVector_to_table as a CTE in a `WITH` statement:
+Here, in may not be perfectly obvious, however the following 2 rows comprise the sought query pattern of `'needle to find'`. In order to we are going to calculate the relative position of a haystack lexeme in the needle pattern; to do that, we need the MIN(pos) in the needle's TSVector. For the sake of readability, we are going to pull the query's TSVECTOR_TO_TABLE as a CTE in a `WITH` statement:
 ```
-WITH query_vec AS (SELECT * FROM tsvector_to_table(to_tsvector('needle to find')))
+WITH query_vec AS (SELECT * FROM TSVECTOR_TO_TABLE(to_tsvector('needle to find')))
 SELECT query_vec.lex, 
        haystack.pos AS pos_in_haystack, 
        haystack.pos - (query_vec.pos - (SELECT MIN(pos) FROM query_vec)) AS range_start
 FROM query_vec
-INNER JOIN tsvector_to_table(to_tsvector('finding? difficult is the needling to find in the needles or the haystack with needles I find')) AS haystack 
+INNER JOIN TSVECTOR_TO_TABLE(to_tsvector('finding? difficult is the needling to find in the needles or the haystack with needles I find')) AS haystack 
 ON haystack.lex = query_vec.lex;
 ```
 Producing:
@@ -150,13 +150,13 @@ We can use the `range_start` value to group lexemes and thusly produce the start
 
 We wrap the above query, grouping and then aggregating the results:
 ```
-WITH query_vec AS (SELECT * FROM tsvector_to_table(to_tsvector('needle to find')))
+WITH query_vec AS (SELECT * FROM TSVECTOR_TO_TABLE(to_tsvector('needle to find')))
 SELECT MIN(pos) AS first, MAX(pos) AS last 
 FROM (SELECT query_vec.lex, 
              haystack.pos, 
              haystack.pos - (query_vec.pos - (SELECT MIN(pos) FROM query_vec)) AS range_start
 	  FROM query_vec
-      INNER JOIN tsvector_to_table(to_tsvector('finding? difficult is the needling to find in the needles or the haystack with needles I find')) AS haystack 
+      INNER JOIN TSVECTOR_TO_TABLE(to_tsvector('finding? difficult is the needling to find in the needles or the haystack with needles I find')) AS haystack 
       ON haystack.lex = query_vec.lex)
 GROUP BY range_start;
 ```
@@ -173,14 +173,14 @@ Producing:
 
 We are clearly not interested in the smaller ranges, and want to collect the original string, between words 5 to 7, and 15 to 17. We have to further next our table here in order to put conditions on aggregated values. Nonetheless, we nest our query and select only the ranges that match the length of the query:
 ```
-WITH query_vec AS (SELECT * FROM tsvector_to_table(to_tsvector('needle to find')))
+WITH query_vec AS (SELECT * FROM TSVECTOR_TO_TABLE(to_tsvector('needle to find')))
 SELECT first, last
 FROM(SELECT MIN(pos) AS first, MAX(pos) AS last
 	   FROM (SELECT query_vec.lex, 
 	                haystack.pos, 
 	                haystack.pos - (query_vec.pos - (SELECT MIN(pos) FROM query_vec)) AS range_start
 		       FROM query_vec
- 	         INNER JOIN tsvector_to_table(to_tsvector('finding? difficult is the needling to find in the needles or the haystack with needles I find')) AS haystack 
+ 	         INNER JOIN TSVECTOR_TO_TABLE(to_tsvector('finding? difficult is the needling to find in the needles or the haystack with needles I find')) AS haystack 
 	         ON haystack.lex = query_vec.lex)
 	   GROUP BY range_start)
 WHERE last - first = (SELECT MAX(pos) - MIN(pos) FROM query_vec);
@@ -225,14 +225,14 @@ LANGUAGE plpgsql;
 ### Putting it all together
 Now, let's combine the `get_word_range` function with our range aggregation and see if we can return the exact matches from a full-text search
 ```
-WITH query_vec AS (SELECT * FROM tsvector_to_table(to_tsvector('needle to find')))
+WITH query_vec AS (SELECT * FROM TSVECTOR_TO_TABLE(to_tsvector('needle to find')))
 SELECT get_word_range('finding? difficult is the needling to find in the needles or the haystack with needles I find', first, last) AS exact_matches
 FROM(SELECT MIN(pos) AS first, MAX(pos) AS last
 	 FROM (SELECT query_vec.lex, 
 	              haystack.pos, 
 	              haystack.pos - (query_vec.pos - (SELECT MIN(pos) FROM query_vec)) AS range_start
 		   FROM query_vec
-	       INNER JOIN tsvector_to_table(to_tsvector('finding? difficult is the needling to find in the needles or the haystack with needles I find')) AS haystack 
+	       INNER JOIN TSVECTOR_TO_TABLE(to_tsvector('finding? difficult is the needling to find in the needles or the haystack with needles I find')) AS haystack 
 	       ON haystack.lex = query_vec.lex)
 	 GROUP BY range_start)
 WHERE last - first = (SELECT MAX(pos) - MIN(pos) FROM query_vec);
@@ -258,7 +258,7 @@ DECLARE search_vec TSVECTOR;
     
 BEGIN
 	search_vec := TO_TSVECTOR(user_search);
-	SELECT ARRAY[MIN(pos), MAX(pos)] FROM tsvector_to_table(search_vec) INTO minmaxarr;
+	SELECT ARRAY[MIN(pos), MAX(pos)] FROM TSVECTOR_TO_TABLE(search_vec) INTO minmaxarr;
 
 	
   RETURN QUERY 
@@ -266,8 +266,8 @@ BEGIN
 	    FROM (SELECT get_word_range(content, first, last) AS match 
 	   	      FROM (SELECT MIN(pos) AS first, MAX(pos) AS last 
 		  	      	  FROM (SELECT haystack.pos, haystack.pos - (query_vec.pos - minmaxarr[1]) as range_start
-	           		        FROM tsvector_to_table(search_vec) AS query_vec
-			                  INNER JOIN tsvector_to_table(content_tsv) AS haystack ON haystack.lex = query_vec.lex)
+	           		        FROM TSVECTOR_TO_TABLE(search_vec) AS query_vec
+			                  INNER JOIN TSVECTOR_TO_TABLE(content_tsv) AS haystack ON haystack.lex = query_vec.lex)
 	      		      GROUP BY range_start)
 	          WHERE (minmaxarr[2] - minmaxarr[1]) = (last - first)
 	          ORDER BY first ASC));
