@@ -1,5 +1,6 @@
 CREATE DOMAIN TSPQuery AS TSQuery 
-NOT NULL CHECK (value::TEXT !~ '[\w+][\W+][\w]' AND UNACCENT(value::TEXT) = value::TEXT);
+NOT NULL CHECK 
+   (value::TEXT !~ '[\w+][\W+][\w]' AND UNACCENT(value::TEXT) = value::TEXT);
 
 CREATE DOMAIN TSPVector AS TSVector 
 NOT NULL CHECK 

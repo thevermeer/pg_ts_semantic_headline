@@ -33,15 +33,42 @@ How to use this extension will largely depend on your desired outcome, as this e
 
 That is, do you want to just improve the phrase highlighting of `ts_headline`, or do you ALSO want to dramatically spped up the recall of those highlighted search results?
 
-### How to highlight multi-word phrases and NOT highlight partial matches
+### How to highlight multi-word phrases and NOT highlight partial matches (ie. Replace TS_HEADLINE)
 In order to simply replace the existing `ts_headline` function with a highlighter that matches entire, multi-word phrases and does NOT highlight partial terms, we can simply substitute `TS_SEMANTIC_HEADLINE` in for `ts_headline` - `TS_SEMANTIC_HEADLINE` comes in a overloaded to have the same method signature as `ts_headline`:
 ```
-
+TS_SEMANTIC_HEADLINE ([config REGCONFIG,] content TEXT, user_search TSQUERY [, options TEXT])
 ```
+The internals of the options behave a little differently than with `ts_headline`, in part due to our returning complete phrases highlighted instead of single words, in part due to making sacrifices in the depth of search to create a better perfoming feature.
 
+### How to implement content retrieval that is ~5x-10x faster than ts_headline
+`TS_FAST_HEADLINE` is much faster than the built-in `ts_headline` because it can make use of pre-computed columns. Internally, the system uses a TSVector as a lookup index and a TEXT[] array as a recall vector. Where the TSVector is a word-stemmed index for fuzzy search, the TEXT[] array is used for fast recall of the original, exact text. The schema pattern that allows us to greatly improve the performance of both the search and recall, by trading off a significant reducion in computationally expensive operations, for an increased requirement for disk space usage.
+
+The fastest approach required the realization of 2 (two) separate columns to any content lookup table; one of type TSPVECTOR (a tsvector with rules) and a TEXT[] array, like so:
+```
+CREATE TABLE my_content_index (
+    id integer GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+    ... other columns ...
+    content_tsv TSPVECTOR,
+    content_arr text[]
+);
+
+CREATE UNIQUE INDEX files_pkey ON files(id int4_ops);
+CREATE INDEX my_content_index_content_tsv_gin_idx ON files USING GIN (content_tsv tsvector_ops);
+```
+With those 2 columns in place, we can now query the table and deliver headlines with highlights much faster, by using:
+```
+TS_FAST_HEADLINE ([config REGCONFIG,] content TEXT, user_search TSPQUERY [, options TEXT])
+```
+As an example, we can now produce fast headlines like so:
+```
+SELECT TS_FAST_HEADLINE('english', content_arr, content_tsv, TO_TSPQUERY('user<->phrase & search | term')) FROM my_content_index; 
+```
+The `options` argument can be used to fine-tune tradeoffs in performance v. accuracy.
 
 ## Purpose
-The purpose of this repository is to document some issues encountered with using PostgreSQL full-text search to display highlighted search results to the user, and propose a solution that is expressed firstly as PGSQL user-defined functions (UDFs). The goal of creating this functionality is to demonstrate the value to the PostgreSQL community of correcting the ts_headline function to better reflect the actual semantics of the full-text search operators used for index lookup. From that, the goal is to introduce better ts_headline semantics into the postgresql source code, but that is a different project althoether. To get there, let's first outline the current issues and create a few UDFs to address the issue and illuminate the value of the improvements.
+The original purpose of this repository is to document some issues encountered with using PostgreSQL full-text search to display highlighted search results to the user, and propose a solution that is expressed firstly as PGSQL user-defined functions (UDFs). The goal of creating this functionality is to demonstrate the value to the PostgreSQL community of correcting the ts_headline function to better reflect the actual semantics of the full-text search operators used for index lookup. 
+
+The emergence of performance wins came as an end in this investigation, but that was not clear at the outset. The actual the goal is to introduce better ts_headline semantics into the postgresql source code, but that is a different project althoether. To get there, let's first outline the current issues and create a few UDFs to address the issue and illuminate the value of the improvements.
 
 ## Preamble
 I am a full-stack developer, building a web application that has stored a large volume of texts, as rows in a postgreSQL data table. The UI we are building performs full-text search by accepting a user-inputted string, searching, and displaying results. When we display results, we want to display passages from the text with "highlights", emphasizing the portions of the passage that match our search.
@@ -66,23 +93,42 @@ Approach: [[Headline function that highlights phrases without partial matches](h
 The overall solution to all 4 of the above problems, derived in the various _Approach_ sections above comes together, both from the implementation of a table with 2 pre-computed columns for more efficiecnt search AND content retrieval. Therefore, our solution consists of:
 
 ### Core Functions 
-- `TSP_QUERY_MATCHES (haystack_arr TEXT[], content_tsv TSVECTOR, search_query TSPQUERY, match_limit INTEGER DEFAULT 5)` function, which converts a fuzzy, stemmed search into the exact phrase matches from the actual text, as well as the word positions of the match within the source text.
 - `TS_SEMANTIC_HEADLINE (content TEXT, search_query TSQUERY, options TEXT DEFAULT ' ')` is a 1:1 replacement of ther built-in `ts_headline` function that improves the highlighting of TSQuery search to fully respect the internal semantics of full-text boolean operators, including phrase highlighting, and excluding partial matches.
 - `TS_FAST_HEADLINE (haystack_arr TEXT[], content_tsv TSVECTOR, search_query TSQUERY, options TEXT DEFAULT ' ')` function, which, when using prerealized TSVector and TEXT[] columns, delivers highlighting 5-10 times FASTER than the built-in `ts_headline` function.
+- `TSP_QUERY_MATCHES (haystack_arr TEXT[], content_tsv TSVECTOR, search_query TSPQUERY, match_limit INTEGER DEFAULT 5)` function, which converts a fuzzy, stemmed search into the exact phrase matches from the actual text, as well as the word positions of the match within the source text. While this is used internally for fast headlines, the ability to convert fuzzy search into esxact matches is a useful capability that may extend other systems.
+
+### TSQuery, TSPQuery and Query Formation
+- `TO_TSPQUERY` - a 1:1 replacement for the built-in `TO_TSQUERY` which treats special character delimited strings in the same fashion as `TSP_INDEXABLE_TEXT`. Accepts a well-formed query string with valid TSQuery operators and syntax.
+- `PHRASETO_TSPQUERY` - a 1:1 replacement for the built-in `PHRASETO_TSQUERY` which treats special character delimited strings in the same fashion as `TSP_INDEXABLE_TEXT. Accepts a human-readable phrase and .
+
+### TSVector, TSPVector and Lookup Index Formation
+- `TO_TSPVECTOR` - a 1:1 replacement for the built-in `TO_TSVECTOR` which treats special character delimited strings in the same fashion as `TSP_INDEXABLE_TEXT`. Internally, we transform TEXT IN -> `UNACCENT`-> `TSP_INDEXABLE_TEXT` -> `TO_TSVECTOR`.
+
+### PostgreSQL Text Search Type Coersion
+- `TSQUERY_TO_TSVECTOR` - Given a TSQuery, the function returns a table of rows, with each row representing a TSQuery phrase and a TSVector representation of that phrase. Too useful.
+- `TSQUERY_TO_TABLE` - Decomposes a TSQuery into a table of lexemes and their positions.
+- `TSVECTOR_TO_TABLE` - Decomposes a TSVector into a table of lexemes and their positions.
 
 ### Fast-Lookup Table (Optional)
-- An optional table schema for faster indexing, implementing both a TSVector column for fast lookup, and a TEXT[] array column for fast content retrieval. Without the table, the work herein is valuable in order to improve the phrase semantics of `ts_headline`; the pre-realization of the TEXT[] array is a necessary feature of the 5x-10x performance gains we have made in this work. For maximal performance, recommend using both a TSVector column and a TEXT[] array column in your lookup table. The TEXT[] array is used for fast lookup
+- An optional table schema for faster indexing, implementing both a TSVector column for fast lookup, and a TEXT[] array column for fast content retrieval. Without the table, the work herein is valuable in order to improve the phrase semantics of `ts_headline`; the pre-realization of the TEXT[] array is a necessary feature of the 5x-10x performance gains we have made in this work. For maximal performance, recommend using both a TSVector column and a TEXT[] array column in your lookup table. The TEXT[] array is used for fast lookup.
+
+The required columns are of types TSPVector and TEXT[]:
+```
+CREATE TABLE my_content_index (
+    id integer GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+    ... other columns ...
+    content_tsv TSPVECTOR,
+    content_arr text[]
+);
+
+CREATE UNIQUE INDEX files_pkey ON files(id int4_ops);
+CREATE INDEX my_content_index_content_tsv_gin_idx ON files USING GIN (content_tsv tsvector_ops);
+```
 
 ### Text Treatment for Positional Indexing, etc
 - `TSP_INDEXABLE_TEXT` treats a string for better positional indexing in TSVectors, by inserting \u0001\u0032 (bell character + SPACE) into words that are delineated by special characters like hyphens. 
 - `TSP_PRESENT_TEXT` undoes the special character delineation performs in `TSP_INDEXABLE_TEXT` and returns the text to the pre-indexed state.
 - `REPLACE_MULTIPLE_STRINGS` accepts a source string, an array of text to find, and an array to text to replace and accretes the replacements to form a final, transformed text.
-
-### TSQuery and TSVector Type Coersion
-- `tsquery_to_tsvector` - Given a TSQuery, the function returns a table of rows, with each row representing a TSQuery phrase and a TSVector representation of that phrase
-- `TSQUERY_TO_TABLE` - Decomposes a TSQuery into a table of lexemes and their positions.
-- `TSVECTOR_TO_TABLE` - Decomposes a TSVectos into a table of lexemes and their positions.
-- `TO_TSPQUERY` - a 1:1 replacement for the built-in `TO_TSQUERY` which treats special character delimited strings in the same fashion as `TSP_INDEXABLE_TEXT`
 
 ## Outcomes
 ### Highlighting Entire Phrases in a TSQuery
