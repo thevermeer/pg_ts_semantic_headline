@@ -91,7 +91,7 @@ BEGIN
               GROUP BY range_start, query, query_length 
               HAVING COUNT(*) = query_length) AS phrase_agg
         WHERE (last - first) = (SELECT MAX(pos) - MIN(pos) 
-                                FROM tsquery_to_table(config, query::TSQUERY))
+                                FROM tsquery_to_table(config, query))
         AND (disable_semantic_check 
              OR TSP_TO_TSVECTOR(config, array_to_string(haystack_arr[first:last], ' ')) @@ query::TSQUERY)
         LIMIT match_limit);
@@ -103,9 +103,9 @@ LANGUAGE plpgsql;
 
 -- OVERLOAD Arity-5 form, to infer the default_text_search_config for parsing
 CREATE OR REPLACE FUNCTION tsp_query_matches
-(haystack_arr TEXT[], content_tsv TSVECTOR, search_query TSQUERY, match_limit INTEGER DEFAULT 5)
+(haystack_arr TEXT[], content_tsv TSVECTOR, search_query TSPQUERY, match_limit INTEGER DEFAULT 5)
 RETURNS TABLE(words TEXT, 
-              ts_query TSQUERY, 
+              ts_query TSPQUERY, 
               start_pos SMALLINT, 
               end_pos SMALLINT) AS
 $$    

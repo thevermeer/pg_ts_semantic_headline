@@ -47,9 +47,9 @@ Options:
    will be separated by this string. The default is “ ... ”.
 */
 
--- Arity-5 Form of fast tsp_semantic_headline with pre-computed arr & tsv
+-- Arity-5 Form of fast tsp_fast_headline with pre-computed arr & tsv
 CREATE OR REPLACE FUNCTION tsp_fast_headline 
-(config REGCONFIG, haystack_arr TEXT[], content_tsv TSVECTOR, search_query TSQUERY, options TEXT DEFAULT '')
+(config REGCONFIG, haystack_arr TEXT[], content_tsv TSVECTOR, search_query TSPQUERY, options TEXT DEFAULT '')
 RETURNS TEXT AS
 $$
 DECLARE
@@ -96,9 +96,9 @@ STABLE
 LANGUAGE plpgsql;
 
 -- OVERLOAD Arity-5 form, to infer the default_text_search_config for parsing
--- Arity-4 Form of fast tsp_semantic_headline with pre-computed arr & tsv
+-- Arity-4 Form of fast tsp_fast_headline with pre-computed arr & tsv
 CREATE OR REPLACE FUNCTION tsp_fast_headline 
-(haystack_arr TEXT[], content_tsv TSVECTOR, search_query TSQUERY, options TEXT DEFAULT ' ')
+(haystack_arr TEXT[], content_tsv TSVECTOR, search_query TSPQUERY, options TEXT DEFAULT ' ')
 RETURNS TEXT AS
 $$
 BEGIN

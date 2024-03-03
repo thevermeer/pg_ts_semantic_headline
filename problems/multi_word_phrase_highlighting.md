@@ -526,7 +526,7 @@ Gives us:
 
 Putting those pieces together, we now have a function that can retrieve the positions and exact match text of complex TSQuery statements; with the word positions and the exact matches we will be able to formulate, aggregate and regexp_replace our way towards a replacement for `ts_headline`.
 
-## Developing the tsp_semantic_headlines function
+## Developing the tsp_fast_headline function
 In order to culminate the progress we have made in searching for TSQuery patterns in TSVectors, and as we can now return the exact positions and strings from compound, multi-phrase TSQueries, aggregate matches in close proximity to each other using `ts_query_exact_matches`, we are ready to aggregate and sort match ranges, and perform highlighting.
 
 Consider the following query that SELECTS from the files table, JOINs to the table/recordset returned by `tsp_query_matches`; in this query:
@@ -629,7 +629,7 @@ We can clearly see that we have something quite workable as a substitute for `ts
 ### Towards a replacement for ts_headline
 Let's bring this into a function and do away with the inner joins and grouping on the `files` table. Replacing and removing SELECT statements in favour of variables, our first version of our function should look like:
 ```
-CREATE OR REPLACE FUNCTION tsp_semantic_headline(haystack_arr TEXT[], content_tsv TSVECTOR, search_query TSQUERY)
+CREATE OR REPLACE FUNCTION tsp_fast_headline(haystack_arr TEXT[], content_tsv TSVECTOR, search_query TSQUERY)
 RETURNS TEXT AS
 $$
 BEGIN
@@ -717,7 +717,7 @@ and that gives us:
 
 With that we can incorporate the options into our function, by parsing the options string into a JSON map and then destructuring the map and using `COALESCE` to fall over to default values:
 ```
-CREATE OR REPLACE FUNCTION tsp_semantic_headline(haystack_arr TEXT[], content_tsv TSVECTOR, search_query TSQUERY, options TEXT DEFAULT '')
+CREATE OR REPLACE FUNCTION tsp_fast_headline(haystack_arr TEXT[], content_tsv TSVECTOR, search_query TSQUERY, options TEXT DEFAULT '')
 RETURNS TEXT AS
 $$
 DECLARE

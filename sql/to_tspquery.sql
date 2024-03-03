@@ -1,5 +1,5 @@
 /*
-Function: tsp_to_tsquery
+Function: TO_TSPQUERY
 
 Accepts:
 - config       REGCONFIG - PGSQL Text Search Language Configuration
@@ -10,14 +10,14 @@ Akin to the builtin function `to_tsquery`, this function converts text to a
 tsquery, normalizing words according to the specified or default configuration. 
 The words must be combined by valid tsquery operators.
 
-tsp_to_tsquery('english', 'The & Fat & Rats') → 'fat' & 'rat'
+TO_TSPQUERY('english', 'The & Fat & Rats') → 'fat' & 'rat'
 
 For the purposes of a TSQuery, this function is the treatment for TSQueries for
 index-friendly positioning and is paralleled with tsp_indexable_text in TSVectors
 */
 
-CREATE OR REPLACE FUNCTION tsp_to_tsquery(config REGCONFIG, query_string TEXT)
-RETURNS TSQUERY AS
+CREATE OR REPLACE FUNCTION TO_TSPQUERY(config REGCONFIG, query_string TEXT)
+RETURNS TSPQuery AS
 $$
 BEGIN
     -- We perform the chararacter substitution twice to catch any terms with 
@@ -33,11 +33,11 @@ STABLE
 LANGUAGE plpgsql;
 
 -- OVERLOAD Arity-2 form, to infer the default_text_search_config for parsing
-CREATE OR REPLACE FUNCTION tsp_to_tsquery(query_string TEXT)
-RETURNS TSQUERY AS
+CREATE OR REPLACE FUNCTION TO_TSPQUERY(query_string TEXT)
+RETURNS TSPQuery AS
 $$
 BEGIN    
-    RETURN tsp_to_tsquery(current_setting('default_text_search_config')::REGCONFIG, 
+    RETURN TO_TSPQUERY(current_setting('default_text_search_config')::REGCONFIG, 
 	                        query_string);
 END;
 $$

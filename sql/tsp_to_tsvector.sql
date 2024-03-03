@@ -1,5 +1,5 @@
 /*
-Function: tsp_to_tsquery
+Function: TO_TSPQUERY
 
 Accepts:
 - config       REGCONFIG - PGSQL Text Search Language Configuration
@@ -10,7 +10,7 @@ Akin to the builtin function `to_tsquery`, this function converts text to a
 tsquery, normalizing words according to the specified or default configuration. 
 The words must be combined by valid tsquery operators.
 
-tsp_to_tsquery('english', 'The & Fat & Rats') → 'fat' & 'rat'
+TO_TSPQUERY('english', 'The & Fat & Rats') → 'fat' & 'rat'
 
 For the purposes of a TSQuery, this function is the treatment for TSQueries for
 index-friendly positioning and is paralleled with tsp_indexable_text in TSVectors

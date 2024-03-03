@@ -1,5 +1,5 @@
 /*
-Function: tsp_semantic_headline
+Function: TS_SEMANTIC_HEADLINE
 This function is intended as a 1:1 replacement for ts_headline and maintains
 the same signature as ts_headline
 
@@ -42,40 +42,47 @@ Note: This form is the 1:1 replacement for ts_headline:
 Likewise, this function uses TS_HEADLINE under the hood to handle content that 
 does NOT use precomputed TEXT[] and TSVector columns. Rather, this implementation
 calls ts_headline to return fragments, and then applies the arity-5 form of
-tsp_semantic_headline to the results to achieve semantically accurate phrase
+ts_semantic_headline to the results to achieve semantically accurate phrase
 highlighting.
 */
--- Arity-4 Form of simplified tsp_semantic_headline 
-CREATE OR REPLACE FUNCTION tsp_semantic_headline 
+
+
+-- Arity-4 Form of simplified TS_SEMANTIC_HEADLINE 
+CREATE OR REPLACE FUNCTION TS_SEMANTIC_HEADLINE
 (config REGCONFIG, content TEXT, user_search TSQUERY, options TEXT DEFAULT '')
 RETURNS TEXT AS
 $$
-DECLARE cleaned_content TEXT = ts_headline(config, 
-                                           content, 
-										   user_search, 
-										   'StartSel="",StopSel="",FragmentDelimiter= XDUMMYFRAGMENTX ' || options);
+DECLARE headline TEXT = ts_headline(config, 
+                                    content, 
+							               user_search, 
+								            'StartSel="",StopSel="",FragmentDelimiter=XDUMMYFRAGMENTX,' || options);
 BEGIN
-	RETURN tsp_fast_headline(config,
-	                         tsp_to_text_array(cleaned_content), 
-                             tsp_to_tsvector(config, UNACCENT(cleaned_content)),
-                             UNACCENT(user_search::TEXT)::TSQUERY,
-                             options);
+    user_search := TO_TSPQUERY(regexp_replace((user_search::TEXT), '''(\w+)(\W)(\w+)'' <-> ''(\w+)'' <-> ''(\w+)''', 
+                                              E'\\4 <-> \\5',
+                                              'g'));
+    headline := regexp_replace(' ' || headline || ' ', 'XDUMMYFRAGMENTX', ' some other stuff ', 'g');
+    RETURN COALESCE(tsp_fast_headline(config,
+	                                   tsp_to_text_array(headline), 
+                                      TSP_TO_TSVECTOR(config, headline), 
+                                      user_search,
+                                      'MaxFragments=30,MinWords=200,MaxWords=200,' || options),
+                    headline);
 END;
 $$
 STABLE
 LANGUAGE plpgsql;
 
 -- OVERLOAD Arity-4 form #2, to infer the default_text_search_config for parsing
--- Arity-3 Form of simplified tsp_semantic_headline 
-CREATE OR REPLACE FUNCTION tsp_semantic_headline
+-- Arity-3 Form of simplified ts_semantic_headline 
+CREATE OR REPLACE FUNCTION TS_SEMANTIC_HEADLINE
 (content TEXT, user_search TSQUERY, options TEXT DEFAULT '')
 RETURNS TEXT AS
 $$
 BEGIN
-	RETURN tsp_semantic_headline(current_setting('default_text_search_config')::REGCONFIG, 
+	RETURN TS_SEMANTIC_HEADLINE(current_setting('default_text_search_config')::REGCONFIG, 
 	                            content, 
-								user_search, 
-								options);
+								       user_search, 
+								       options);
 END;
 $$
 STABLE
