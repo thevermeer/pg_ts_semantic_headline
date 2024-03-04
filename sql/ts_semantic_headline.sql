@@ -56,11 +56,9 @@ $$
 DECLARE headline TEXT = ts_headline(config, 
                                     content, 
 							               user_search, 
-								            'StartSel="",StopSel="",FragmentDelimiter=XDUMMYFRAGMENTX,' || options);
+								            options || ',StartSel="",StopSel="",FragmentDelimiter=XDUMMYFRAGMENTX,');
 BEGIN
-    user_search := TO_TSPQUERY(regexp_replace((user_search::TEXT), '''(\w+)(\W)(\w+)'' <-> ''(\w+)'' <-> ''(\w+)''', 
-                                              E'\\4 <-> \\5',
-                                              'g'));
+    user_search := TO_TSPQUERY(user_search);
     headline := regexp_replace(' ' || headline || ' ', 'XDUMMYFRAGMENTX', ' ... ', 'g');
     IF (OPTIONS <> '') THEN options := ',' || options; END IF;
     RETURN COALESCE(TS_FAST_HEADLINE(config,
@@ -70,7 +68,6 @@ BEGIN
                                      'MaxFragments=30,MinWords=64,MaxWords=64' || options),
                     headline);
 END;
-$$
 STABLE
 LANGUAGE plpgsql;
 
