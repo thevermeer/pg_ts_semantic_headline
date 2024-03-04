@@ -47,7 +47,7 @@ BEGIN
    RETURN 
     (SELECT ts_filter(setweight(tsv, 'A', ARRAY_AGG(lexes)), '{a}')
      FROM (SELECT UNNEST(tsvector_to_array(vec.phrase_vector)) AS lexes
-           FROM tsquery_to_tsvector(config, search_query) AS vec) AS query2vec);
+           FROM TSQUERY_TO_TSVECTOR(config, search_query) AS vec) AS query2vec);
 END;
 $$
 STABLE

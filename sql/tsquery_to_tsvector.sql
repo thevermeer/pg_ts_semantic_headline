@@ -1,5 +1,5 @@
 /*
-Function: tsquery_to_tsvector
+Function: TSQUERY_TO_TSVECTOR
 
 Accepts: 
 - config      REGCONFIG - PGSQL Text Search Language Configuration
@@ -18,7 +18,7 @@ and brackets are ignored, and the table is then a representation of a list of
 phrase patterns in the query
 */
 
-CREATE OR REPLACE FUNCTION tsquery_to_tsvector(config REGCONFIG, input_query TSQUERY)
+CREATE OR REPLACE FUNCTION TSQUERY_TO_TSVECTOR(config REGCONFIG, input_query TSQUERY)
 RETURNS TABLE(phrase_vector TSVECTOR, phrase_query TSQUERY) AS
 $$
 DECLARE
@@ -54,12 +54,12 @@ STABLE
 LANGUAGE plpgsql;
 
 -- OVERLOAD Arity-2 form, to infer the default_text_search_config for parsing
-CREATE OR REPLACE FUNCTION tsquery_to_tsvector(input_query TSQUERY)
+CREATE OR REPLACE FUNCTION TSQUERY_TO_TSVECTOR(input_query TSQUERY)
 RETURNS TABLE(phrase_vector TSVECTOR, phrase_query TSQUERY) AS
 $$
 BEGIN
    RETURN QUERY 
-   (SELECT * FROM tsquery_to_tsvector(current_setting('default_text_search_config')::REGCONFIG, input_query));
+   (SELECT * FROM TSQUERY_TO_TSVECTOR(current_setting('default_text_search_config')::REGCONFIG, input_query));
 END;
 $$
 STABLE

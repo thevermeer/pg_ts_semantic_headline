@@ -267,10 +267,10 @@ FROM (SELECT to_tsvector((SELECT REPLACE_MULTIPLE_STRINGS(phrase_query,
 | 'posit':3 'power':1 |'power' \<2\> 'positive' |
 
 
-### The tsquery_to_tsvector function
+### The TSQUERY_TO_TSVECTOR function
 Here's the function, fully assembled:
 ```
-CREATE OR REPLACE FUNCTION tsquery_to_tsvector(input_query TSQUERY)
+CREATE OR REPLACE FUNCTION TSQUERY_TO_TSVECTOR(input_query TSQUERY)
 RETURNS TABLE(phrase_vector TSVECTOR, phrase_query TSQUERY) AS
 $$
 DECLARE
@@ -296,9 +296,9 @@ $$
 LANGUAGE plpgsql;
 ```
 
-All together, `tsquery_to_tsvector` accepts a TSQuery and converts it into a table of phrases, returning both the TSVector and TSQuery representation of a phrase. Consider:
+All together, `TSQUERY_TO_TSVECTOR` accepts a TSQuery and converts it into a table of phrases, returning both the TSVector and TSQuery representation of a phrase. Consider:
 ```
-SELECT *  FROM tsquery_to_tsvector(to_tsquery('power | (friend<19>people & !(rub<2>life)) | power<2>positive'));
+SELECT *  FROM TSQUERY_TO_TSVECTOR(to_tsquery('power | (friend<19>people & !(rub<2>life)) | power<2>positive'));
 ```
 Produces:
 | phrase\_vector |phrase\_query |
@@ -312,7 +312,7 @@ We now have the ability to convert a TSQuery into a TSVector. Based on the techn
 
 In the _Retrieveing Exact Matches from PostgreSQL Text Search_ document , we brought forward a function, `TSVECTOR_TO_TABLE` for decomposing a TSVector into a table of lexemes and positions, ordered by position. See [[Unnesting a TSVector into a table of occurences](https://github.com/thevermeer/postgresql_semantic_tsheadline/blob/main/problems/exact_matches.md#unnesting-a-tsvector-into-a-table-of-occurences)].
 
-For our purposes now, we will bring our new `tsquery_to_tsvector` function together with `TSVECTOR_TO_TABLE` for further decompose our TSQuery into a table. We are taking this path because we want to maintain the relative lexeme positions of each of the n phrases contained in the TSQuery; the built-in TSVector concatenate function will NOT preserve the relative positions of the second, concatenated vector, shifting them to the positions AFTER the last lexeme in the first vector. Witness:
+For our purposes now, we will bring our new `TSQUERY_TO_TSVECTOR` function together with `TSVECTOR_TO_TABLE` for further decompose our TSQuery into a table. We are taking this path because we want to maintain the relative lexeme positions of each of the n phrases contained in the TSQuery; the built-in TSVector concatenate function will NOT preserve the relative positions of the second, concatenated vector, shifting them to the positions AFTER the last lexeme in the first vector. Witness:
 ```
 SELECT * FROM TSVECTOR_TO_TABLE(TO_TSVECTOR('first second third') || TO_TSVECTOR('one two three'));
 ```
@@ -346,7 +346,7 @@ $$
 BEGIN
 	RETURN QUERY 
 	(WITH phrases AS (SELECT phrase.phrase_vector, phrase.phrase_query 
-	                  FROM tsquery_to_tsvector(input_query) AS phrase)
+	                  FROM TSQUERY_TO_TSVECTOR(input_query) AS phrase)
      SELECT phrases.phrase_vector, 
             phrases.phrase_query,
             word.lex, 
@@ -427,7 +427,7 @@ In order to search over multiple, logically connected phrases, we are going to h
   ```
   content_tsv := (SELECT ts_filter(setweight(content_tsv, 'A', ARRAY_AGG(lexes)), '{a}')
                   FROM (SELECT UNNEST(tsvector_to_array(vec.phrase_vector)) AS lexes
-                        FROM tsquery_to_tsvector(search_query) AS vec));
+                        FROM TSQUERY_TO_TSVECTOR(search_query) AS vec));
   ```
   Note that, here we are using the built-in `tsvector_to_array` to return an array of phrase lexemes, unnesting that array, and recomposing the array of lexemes for all phrases.
 - For each search phrase in the TSQuery, we will need to calculate its min/max lexeme positions on the fly.
@@ -452,7 +452,7 @@ $$
 BEGIN
     content_tsv := (SELECT ts_filter(setweight(content_tsv, 'A', ARRAY_AGG(lexes)), '{a}')
                     FROM (SELECT UNNEST(tsvector_to_array(vec.phrase_vector)) AS lexes
-                          FROM tsquery_to_tsvector(search_query) AS vec));
+                          FROM TSQUERY_TO_TSVECTOR(search_query) AS vec));
     RETURN QUERY
     (
         SELECT array_to_string(haystack_arr[first:last], ' ') as found_words,           

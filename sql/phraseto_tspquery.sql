@@ -1,5 +1,5 @@
 /*
-Function: phraseto_tspquery
+Function: PHRASETO_TSPQUERY
 
 1:1 replacement for the built-in PHRASETO_TSQuery function:
 
@@ -14,7 +14,7 @@ and the rendered TSVector. As we are searching on a treated vector, we need to t
 the phrase used to render a TSPQuery in the same way
 */
 
-CREATE OR REPLACE FUNCTION phraseto_tspquery(config REGCONFIG, query_string TEXT)
+CREATE OR REPLACE FUNCTION PHRASETO_TSPQUERY(config REGCONFIG, query_string TEXT)
 RETURNS TSPQUERY AS
 $$
 BEGIN
@@ -25,11 +25,11 @@ STABLE
 LANGUAGE plpgsql;
 
 -- OVERLOAD Arity-2 form, to infer the default_text_search_config for parsing
-CREATE OR REPLACE FUNCTION phraseto_tspquery(query_string TEXT)
+CREATE OR REPLACE FUNCTION PHRASETO_TSPQUERY(query_string TEXT)
 RETURNS TSPQUERY AS
 $$
 BEGIN    
-    RETURN phraseto_tspquery(current_setting('default_text_search_config')::REGCONFIG, 
+    RETURN PHRASETO_TSPQUERY(current_setting('default_text_search_config')::REGCONFIG, 
 	                         query_string);
 END;
 $$

@@ -6,7 +6,7 @@ Accepts:
 - input_query TEXT - the source text to be prepared, by having indexing tokens removed
 
 Divides a TSQuery into phrases separated by logical operators. For each phrase, applies
-tsquery_to_tsvector. For each resulting TSVector, we apply TSVECTOR_TO_TABLE.
+TSQUERY_TO_TSVECTOR. For each resulting TSVector, we apply TSVECTOR_TO_TABLE.
 
 Returns a table with each record representing a lexeme and position within a TSVector, 
 and for posterity each row also contains a phrase_vector TSVECTOR and the corresponding 
@@ -21,7 +21,7 @@ $$
 BEGIN
 	RETURN QUERY 
 	(WITH phrases AS (SELECT DISTINCT(phrase.phrase_vector), phrase.phrase_query 
-	                  FROM tsquery_to_tsvector(config, input_query) AS phrase)
+	                  FROM TSQUERY_TO_TSVECTOR(config, input_query) AS phrase)
       SELECT phrases.phrase_vector, 
              phrases.phrase_query,
              word.lex, 
