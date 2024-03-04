@@ -15,15 +15,15 @@ DECLARE search_vec TSVECTOR;
 BEGIN
 	search_vec := TO_TSVECTOR(substitute_characters(user_search));
 	content := substitute_characters(content);
-	SELECT ARRAY[MIN(pos), MAX(pos)] FROM TSVECTOR_TO_TABLE(search_vec) INTO minmaxarr;
+	SELECT ARRAY[MIN(pos), MAX(pos)] FROM tsvector_to_table(search_vec) INTO minmaxarr;
 	
     RETURN QUERY 
      (SELECT match
 	  FROM (SELECT get_word_range(content, first, last) AS match 
 	   	    FROM (SELECT MIN(pos) AS first, MAX(pos) AS last 
 		  		  FROM (SELECT haystack.pos, haystack.pos - (query_vec.pos - minmaxarr[1]) as range_start
-	           		    FROM TSVECTOR_TO_TABLE(content_tsv) AS haystack 
-			            INNER JOIN TSVECTOR_TO_TABLE(search_vec) AS query_vec 
+	           		    FROM tsvector_to_table(content_tsv) AS haystack 
+			            INNER JOIN tsvector_to_table(search_vec) AS query_vec 
 			            ON haystack.lex = query_vec.lex)
 	      		  GROUP BY range_start)
 	  		WHERE (minmaxarr[2] - minmaxarr[1]) = (last - first)
@@ -41,20 +41,24 @@ SELECT ts_exact_phrase_matches(
 		TO_TSVECTOR(prepare_text_for_tsvector(content)), 
 		'Eighteen years!” am the passenger') 
 FROM files;
-::>
-ProjectSet  (cost=0.00..603.50 rows=100000 width=32) (actual time=261.540..26243.910 rows=100 loops=1)
-  ->  Seq Scan on files  (cost=0.00..3.00 rows=100 width=18) (actual time=0.021..0.395 rows=100 loops=1)
-Planning Time: 0.124 ms
-Execution Time: 26244.055 ms
 ```
+| QUERY PLAN |
+| --- |
+| ProjectSet  \(cost=0.00..610.50 rows=100000 width=32\) \(actual time=6317.262..6317.263 rows=0 loops=1\) |
+|   \-\>  Seq Scan on files  \(cost=0.00..10.00 rows=100 width=18\) \(actual time=0.008..0.253 rows=100 loops=1\) |
+| Planning Time: 0.282 ms |
+| Execution Time: 26244.055 ms |
+
+
 versus:
 ```
 EXPLAIN ANALYZE SELECT ts_headline(content, phraseto_tsquery('Eighteen years!” said the passenger')) FROM files;
-::>
-Seq Scan on files  (cost=0.00..53.00 rows=100 width=32) (actual time=58.269..5592.341 rows=100 loops=1)
-Planning Time: 0.103 ms
-Execution Time: 5592.525 ms
 ```
+| QUERY PLAN |
+| --- |
+| Seq Scan on files  \(cost=0.00..60.00 rows=100 width=32\) \(actual time=20.584..1879.231 rows=100 loops=1\) |
+| Planning Time: 0.056 ms |
+| Execution Time: 5592.525 ms |
 
 Clearly, we have a lot of ground to make up.
 
@@ -70,12 +74,15 @@ SELECT ts_exact_phrase_matches(
 		content_tsv, 
 		'Eighteen years!” am the passenger') 
 FROM files;
-::>
-ProjectSet  (cost=0.00..553.50 rows=100000 width=32) (actual time=166.332..17063.233 rows=100 loops=1)
-  ->  Seq Scan on files  (cost=0.00..3.00 rows=100 width=36) (actual time=0.021..0.402 rows=100 loops=1)
-Planning Time: 0.118 ms
-Execution Time: 17063.375 ms
 ```
+| QUERY PLAN |
+| --- |
+| ProjectSet  \(cost=0.00..560.50 rows=100000 width=32\) \(actual time=17063.759..17063.759 rows=0 loops=1\) |
+|   \-\>  Seq Scan on files  \(cost=0.00..10.00 rows=100 width=36\) \(actual time=0.011..0.225 rows=100 loops=1\) |
+| Planning Time: 0.067 ms |
+| Execution Time: 17063.375 ms |
+
+
 ### 2. JIT v. Precomputed content prepare_text_for_tsvector
 The call to `prepare_text_for_tsvector(content)` is accounting for roughly 25% of total time (4s or 40ms per row). If we replace that call with a pre-computed row, we see:
 ```
@@ -85,12 +92,14 @@ SELECT ts_exact_phrase_matches(
 		content_tsv, 
 		'Eighteen years!” am the passenger') 
 FROM files;
-::>
-ProjectSet  (cost=0.00..528.50 rows=100000 width=32) (actual time=135.281..13121.019 rows=100 loops=1)
-  ->  Seq Scan on files  (cost=0.00..3.00 rows=100 width=36) (actual time=0.021..0.331 rows=100 loops=1)
-Planning Time: 0.117 ms
-Execution Time: 13121.152 ms
 ```
+| QUERY PLAN |
+| --- |
+| ProjectSet  \(cost=0.00..535.50 rows=100000 width=32\) \(actual time=13121.386..13121.386 rows=0 loops=1\) |
+|   \-\>  Seq Scan on files  \(cost=0.00..10.00 rows=100 width=50\) \(actual time=0.021..0.258 rows=100 loops=1\) |
+| Planning Time: 1.217 ms |
+| Execution Time: 13121.152 ms |
+
 Great! In 2 steps of precomputing, we have reduced our time to compute by half. Let's keep going!
    
 ### 3. Use PGSQL's full-text tools to reduce compute load on TSVectors
@@ -100,29 +109,33 @@ After some reading of PGSQL full-text manipulation functions, we find two of int
 a) `setweight(TSVECTOR, TEXT, TEXT[])` - the 3-arity form of this function allows one to add weight strings to a list of the lexemes provided as an array of text in the third argument. If we therefore invoke setweight on the haystack TSV, passing in the array of lexemes in our needle, we 'weight' the relevant query lexemes in the haystack:
 ```
 SELECT setweight(to_tsvector('find this needle and that needle in the haystack'), 'A', ARRAY['needl']);
-::>
- setweight
------------
-'find':1 'haystack':9 'needl':3A,6A
 ```
+| setweight |
+| --- |
+| 'find':1 'haystack':9 'needl':3A,6A |
+
 b) `ts_filter(TSVECTOR, CHAR[])` given an array of characters will return a tsvector containing only the elements of the weights provided in the character array as the second argument:
 ```
 SELECT ts_filter(setweight(to_tsvector('find this needle and that needle in the haystack'), 'A', ARRAY['needl']), '{a}');
-::>
-'needl':3A,6A
 ```
+| ts\_filter |
+| --- |
+| 'needl':3A,6A |
 
-Ultimately, using the combination of `setweight` and `ts_filter`, we will substitute `TSVECTOR_TO_TABLE(search_vec)` for `TSVECTOR_TO_TABLE(ts_filter(setweight(content_tsv, 'A', tsvector_to_array(search_vec)), '{a}'))` and...
+Ultimately, using the combination of `setweight` and `ts_filter`, we will substitute `tsvector_to_table(search_vec)` for `tsvector_to_table(ts_filter(setweight(content_tsv, 'A', tsvector_to_array(search_vec)), '{a}'))` and...
 ```
 EXPLAIN ANALYZE 
 SELECT ts_exact_phrase_matches(indexed_content, content_tsv, 'Eighteen years!” am the passenger') 
 FROM files;
-::>
-ProjectSet  (cost=0.00..528.50 rows=100000 width=32) (actual time=38.117..3564.664 rows=100 loops=1)
-  ->  Seq Scan on files  (cost=0.00..3.00 rows=100 width=36) (actual time=0.020..0.369 rows=100 loops=1)
-Planning Time: 0.116 ms
-Execution Time: 3564.792 ms
 ```
+| QUERY PLAN |
+| --- |
+| ProjectSet  \(cost=0.00..535.50 rows=100000 width=32\) \(actual time=3564.827..3564.827 rows=0 loops=1\) |
+|   \-\>  Seq Scan on files  \(cost=0.00..10.00 rows=100 width=50\) \(actual time=0.010..0.221 rows=100 loops=1\) |
+| Planning Time: 0.065 ms |
+| Execution Time: 3564.848 ms |
+
+
 
 Wow. We have cut the total time of our function from 13s per 100 rows down to ~3.5 seconds. We are almost there, but it is also worth remembering: the total time for the built-in `ts_headline` function was ~5500ms. Our function is already **40% faster that the OOTB ts_headline function**. 
 
@@ -137,12 +150,13 @@ SELECT ts_exact_phrase_matches(
 		content_tsv, 
 		'Eighteen years!” or the passenger') 
 FROM files;
-::>
-ProjectSet  (cost=0.00..528.50 rows=100000 width=32) (actual time=3.293..281.523 rows=100 loops=1)
-  ->  Seq Scan on files  (cost=0.00..3.00 rows=100 width=36) (actual time=0.020..0.245 rows=100 loops=1)
-Planning Time: 0.110 ms
-Execution Time: 281.631 ms
 ```
+| QUERY PLAN |
+| --- |
+| ProjectSet  \(cost=0.00..535.50 rows=100000 width=32\) \(actual time=281.827..281.827 rows=0 loops=1\) |
+|   \-\>  Seq Scan on files  \(cost=0.00..10.00 rows=100 width=50\) \(actual time=0.010..0.221 rows=100 loops=1\) |
+| Planning Time: 0.065 ms |
+| Execution Time: 281.848 ms |
 
 Look at that! If we pre-realize the space-delimited array of our prepared content, we are able to process 100 rows, each of 16,300+ words of text, in less that 300ms or 2.8ms per row. The baseline time for the built-in `ts_headline` function was 5592ms, and thus, we have managed to highlight the semantically correct phrase in roughly 5% of the time (281ms). **This technique represents a 20 x improvement over built-in functionality**
 
@@ -159,18 +173,18 @@ DECLARE search_vec TSVECTOR;
 BEGIN
 	user_search := prepare_text_for_tsvector(user_search);
 	search_vec  := TO_TSVECTOR(user_search);
-	minmaxarr   := (SELECT ARRAY[MIN(pos), MAX(pos)] FROM TSVECTOR_TO_TABLE(search_vec));
+	minmaxarr   := (SELECT ARRAY[MIN(pos), MAX(pos)] FROM tsvector_to_table(search_vec));
 	
     RETURN QUERY 
           (SELECT replace(array_to_string(haystack_arr[first:last], ' '), chr(1) || ' ', '')
            FROM (SELECT MIN(pos) AS first, MAX(pos) AS last 
                  FROM (SELECT haystack.pos, 
                               haystack.pos - (query_vec.pos - minmaxarr[1]) as range_start
-                       FROM (SELECT lex, pos FROM TSVECTOR_TO_TABLE(ts_filter(setweight(content_tsv, 
+                       FROM (SELECT lex, pos FROM tsvector_to_table(ts_filter(setweight(content_tsv, 
 	           		                                                                     'A', 
 	           		                                                                     tsvector_to_array(search_vec)), 
 	           		                                                           '{a}'))) AS haystack 
-			           INNER JOIN TSVECTOR_TO_TABLE(search_vec) AS query_vec 
+			           INNER JOIN tsvector_to_table(search_vec) AS query_vec 
 			           ON haystack.lex = query_vec.lex)
 	      		 GROUP BY range_start)
            WHERE (minmaxarr[2] - minmaxarr[1]) = (last - first)

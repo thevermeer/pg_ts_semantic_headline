@@ -3,12 +3,10 @@ For multi-word search terms, ts_headline is treating a multi-word phrase like su
 
 ```
 SELECT ts_headline('liberally apply shampoo to scalp', to_tsquery('liberally<->applied<->semantics'));
-
-::>
- ts_headline
---------------
-<b>liberally</b> apply shampoo to scalp
 ```
+| ts\_headline |
+| --- |
+| \<b\>liberally\</b\> \<b\>apply\</b\> shampoo to scalp |
 
 The partial highlighting may seem trivial at this first stage, however, when applied to large documents, and the MaxFragments option for ts_headline is greater than zero (See [pgsql Full-text search - 12.3.4 Highlighting Results]) we can easily end up with somne partial matches, and we do not want those displayed.
 
@@ -26,10 +24,14 @@ In order to guarantee that we are only displaying headlines that abide the user-
 Per our approach above, we want to perform a ts_headline call, decompose the returned string into passages, and then re-aggregate only the passages that match the test `WHERE TO_TSVECTOR(passages.text) @@ query`. This is done like so:
 ```
 SELECT string_agg(passages.text, '<passage>') 
-FROM (SELECT regexp_split_to_table(ts_headline('quick brown fox box and fox', 'fox<1>box'::TSQUERY, ''), 
+FROM (SELECT regexp_split_to_table(ts_headline('quick fox, brown fox box and fox', 'fox<1>box'::TSQUERY, ''), 
                                    E'<passage>') AS text) AS passages
 			WHERE TO_TSVECTOR(passages.text) @@ 'fox<1>box'::TSQUERY;
 ```
+| string\_agg |
+| --- |
+| quick \<b\>fox\</b\>, brown \<b\>fox\</b\> \<b\>box\</b\> and \<b\>fox\</b\> |
+
 Above, the `WHERE TO_TSVECTOR(passages.text) @@ 'fox<1>box'::TSQUERY` is taking the passage returned from `ts_headline`, casting that text into a TSVector and then testing with `@@` against the TSQuery. 
 
 ### Function to return value from option string (Comma-Delimited list of key=value)

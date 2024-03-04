@@ -6,24 +6,20 @@ In pre-realizing the TSVector in pgsql, when we perform search by similarly redu
 #### Example: TSVector lexeme reduction loses the exact content matched
 ```
 SELECT to_tsvector('exacting exactly the exact exaction that exacts the exacted');
-
-     to_tsvector     
----------------------
- 'exact':1,2,4,5,7,9
-(1 row)
 ```
+| to\_tsvector |
+| --- |
+| 'exact':1,2,4,5,7,9 |
 
 Can we use ts_headline to retrieve the exact strings that are being matched in the lexeme-reduced index lookup?
 
 That is:
 ```
 SELECT SOME_FUNCTION('exacting exactly the exact exaction that exacts the exacted', ts_tsquery('exact'));
-
-::>
- SOME_FUNCTION
----------------
-exacting, exactly, exact, exaction, exacts, exacted
 ```
+| some\_function |
+| --- |
+| exacting, exactly, exact, exaction, exacts, exacted |
 
 ## Setup 
 
@@ -34,12 +30,11 @@ Given that the TSVector is computed and available is it possible to use the TSVe
 Recall that that a TS Vector is an alphaebtized list of lexemes and their positions:
 ```
 SELECT to_tsvector('This is a very generic statment about the nature of statements and the proposition of various stated propositions that may arise.');
-
-::>
- to_tsvector
----------------------
-'aris':21 'generic':5 'may':20 'natur':9 'proposit':14,18 'state':17 'statement':11 'statment':6 'various':16
 ```
+| to\_tsvector |
+| --- |
+| 'aris':21 'generic':5 'may':20 'natur':9 'proposit':14,18 'state':17 'statement':11 'statment':6 'various':16 |
+
 If we can determine which parts of the content_tsv match the pattern of the query phrase, we can return the positions, in the content, of the search matches; then, with the integer word positions, we can cut apart the string and highlight the term.
 
 ## Approach
@@ -55,28 +50,20 @@ Finally, we will split the haystack (source content) apart to determine the exac
 Given any TS Vector in postgreSQL, that TSVector can be decomposed into a table of rows with lexemes (TEXT), positions (SMALLINT[]) and weights:
 ```
 SELECT * FROM UNNEST(TO_TSVECTOR('the dogged fox jumps over the foxed dog'));
-
-::>
-lexeme | positions | weights 
--------------------------------
-dog	{2,8}	{D,D}
-fox	{3,7}	{D,D}
-jump	{4}	{D}
 ```
+| lexeme |positions |weights |
+| --- | --- | --- |
+| dog |\{2,8\} |\{D,D\} |
+
 
 In turn, the positions array can further be decomposed into a row for every position:
 ```
 SELECT lexeme, UNNEST(positions) AS position FROM UNNEST(TO_TSVECTOR('the dogged fox jumps over the foxed dog'));
-
-::>
- lexeme | position
--------------------
-dog	  2
-dog	  8
-fox	  3
-fox	  7
-jump	4
 ```
+| lexeme |position |
+| --- | --- |
+| dog |8 |
+
 
 For our purposes, we can make this code reusable and create a function that accepts a TSVector and returns a table of lexemes and positions:
 ```
@@ -104,16 +91,9 @@ INNER JOIN TSVECTOR_TO_TABLE(to_tsvector('finding? difficult is the needling to 
 ON haystack.lex = query_vec.lex;
 ```
 Which produces:
-```
-lex | pos_in_needle | pos_in_haystack
-
-find	3	1
-find	3	7
-find	3	17
-needl	1	10
-needl	1	5
-needl	1	15
-```
+| lex |pos\_in\_needle |pos\_in\_haystack |
+| --- | --- | --- |
+| find |3 |7 |
 
 Here, in may not be perfectly obvious, however the following 2 rows comprise the sought query pattern of `'needle to find'`. In order to we are going to calculate the relative position of a haystack lexeme in the needle pattern; to do that, we need the MIN(pos) in the needle's TSVector. For the sake of readability, we are going to pull the query's TSVECTOR_TO_TABLE as a CTE in a `WITH` statement:
 ```
@@ -126,16 +106,14 @@ INNER JOIN TSVECTOR_TO_TABLE(to_tsvector('finding? difficult is the needling to 
 ON haystack.lex = query_vec.lex;
 ```
 Producing:
-```
-  lex | pos_in_haystack | range_start 
----------------------------------------
-find	  1	    -1
-find	  7      5
-find	 17 	15
-needl	 10 	10
-needl	  5	     5
-needl	 15	    15
-```
+| lex |pos\_in\_haystack |range\_start |
+| --- | --- | --- |
+| find |1 |\-1 |
+| find |7 |5 |
+| find |17 |15 |
+| needl |10 |10 |
+| needl |5 |5 |
+| needl |15 |15 |
 
 Here, there are 2 groups of matches:
 1) First Match:
@@ -157,19 +135,17 @@ FROM (SELECT query_vec.lex,
              haystack.pos - (query_vec.pos - (SELECT MIN(pos) FROM query_vec)) AS range_start
 	  FROM query_vec
       INNER JOIN TSVECTOR_TO_TABLE(to_tsvector('finding? difficult is the needling to find in the needles or the haystack with needles I find')) AS haystack 
-      ON haystack.lex = query_vec.lex)
+      ON haystack.lex = query_vec.lex) AS q
 GROUP BY range_start;
 ```
 
 Producing:
-```
- first  |  last
-----------------
- 1	    1
- 5	    7
-10	   10
-15	   17
-```
+| first |last |
+| --- | --- |
+| 10 |10 |
+| 5 |7 |
+| 15 |17 |
+| 1 |1 |
 
 We are clearly not interested in the smaller ranges, and want to collect the original string, between words 5 to 7, and 15 to 17. We have to further next our table here in order to put conditions on aggregated values. Nonetheless, we nest our query and select only the ranges that match the length of the query:
 ```
@@ -186,12 +162,11 @@ FROM(SELECT MIN(pos) AS first, MAX(pos) AS last
 WHERE last - first = (SELECT MAX(pos) - MIN(pos) FROM query_vec);
 ```
 Producing:
-```
- first  |  last
-----------------
- 5	    7
-15	   17
-```
+| first |last |
+| --- | --- |
+| 5 |7 |
+| 15 |17 |
+
 
 Alright! Now we are getting somewhere, because, if you look at the haystack sentence, we will see that the ranges 5-7 and 15-17 are indeed matching:
 ```
@@ -238,12 +213,10 @@ FROM(SELECT MIN(pos) AS first, MAX(pos) AS last
 WHERE last - first = (SELECT MAX(pos) - MIN(pos) FROM query_vec);
 ```
 produces:
-```
- exact_matches
----------------
-needling to find
-needles I find
-```
+| exact\_matches |
+| --- |
+| needling to find |
+| needles I find |
 
 Great! we have found a general pattern for matching PHRASES is a TS Search. (See Limitations below) 
 
@@ -284,10 +257,10 @@ As we begin querying for content, it seems that we have been successful in creat
 ```
 SELECT ts_exact_phrase_matches(content, content_tsv, 'it was the age of wisdom') FROM files LIMIT 1;
 ```
-produces:
-```
-age of wisdom,
-```
+| ts\_exact\_phrase\_matches |
+| --- |
+| age of wisdom, |
+
 This is correct; the "it was the" portion of the search query are all stop words and therefore excluded from the range. Great.
 
 The correct matching continues further into the text, and we will only begin to encounter trouble after a few paragraphs of text
@@ -297,36 +270,36 @@ The correct matching continues further into the text, and we will only begin to 
 SELECT ts_exact_phrase_matches(content, content_tsv, 'direct the other way') FROM files LIMIT 1;
 ```
 nearly correctly produces: (Notice the extra 'in' at the end)
-```
-direct the other way—in
-```
+| ts\_exact\_phrase\_matches |
+| --- |
+| direct the other way—in |
+
 #### Explanation
 As we encounted terms within our text that contain hyphens, as an example, we find that the default english stem parser is creating multiple entries for the parts of the term. Namely, for a hypenated term, we index the first term, the last term and the conjoined 2-word term. The result is that when indexing a single hypenated word, we index 3 terms, like so:
 ```
-SELECT to_tsvector('seventy-five');
-::>
- to_tsvector 
--------------
- 'five':3 'seventi':2 'seventy\-f':1 
+SELECT to_tsvector('seventy-five'); 
 ```
+| to\_tsvector |
+| --- |
+| 'five':3 'seventi':2 'seventy\-f':1 |
+
 as well as:
 ```
 SELECT to_tsvector('power-law');
-::>
- to_tsvector
--------------
-'law':3 'power':2 'power-law':1
 ```
+| to\_tsvector |
+| --- |
+| 'law':3 'power':2 'power\-law':1 |
 
 #### Example 3
 As we start searching terms further down in a given text, here, content from chapter 3 of A Tale of Two Cities, and the phrase `"two passengers would admonish him to pull up the window"` actually returns content from 4 paragraphs 'lower' in the document.
 ```
 SELECT ts_exact_phrase_matches(content, content_tsv, 'two passengers would admonish him to pull up the window') FROM files LIMIT 1;
-::>
- ts_exact_phrase_matches
--------------------------
-wet, the sky was clear, and the sun rose bright,
 ```
+| ts\_exact\_phrase\_matches |
+| --- |
+| Royal George Hotel opened the coach\-door as his custom was. |
+
 #### Conclusions
 Clearly, we need to do more than tokenize our source string, because TSVector is doing some special handling of special characters in the source text, in order to better use the lexeme-reduced, english-stem TSVector to identify the positions of fuzzy searches within the source text. Let's try that now:
 
@@ -357,22 +330,26 @@ This articulation of our string cleaning pattern will produce a string that brea
 
 ```
 SELECT prepare_text_for_tsvector('on seventy power-rules,  --- she!, !!@#!@$% entertain''s the reason-to-be! with F!in-ess');
-::>
- prepare_text_for_tsvector
----------------------------
-on seventy power- rules, she!, entertain' s the reason- to- be! with F! in- ess
 ```
+| prepare\_text\_for\_tsvector |
+| --- |
+| on seventy power\- rules, she\!, entertain' s the reason\- to\- be\! with F\! in\- ess |
+
 Let's compare the before and after, resulting TSVector:
 ```
 Before: SELECT to_tsvector('on seventy power-rules,  --- she!, !!@#!@$% entertain''s the reason-to-be! with F!in-ess');
-----------
-'entertain':7 'ess':18 'f':15 'in-ess':16 'power':4 'power-rul':3 'reason':11 'reason-to-b':10 'rule':5 'seventi':2
 ```
+| to\_tsvector |
+| --- |
+| 'entertain':7 'ess':18 'f':15 'in\-ess':16 'power':4 'power\-rul':3 'reason':11 'reason\-to\-b':10 'rule':5 'seventi':2 |
+
 ```
 After: SELECT to_tsvector(prepare_text_for_tsvector('on seventy power-rules,  --- she!, !!@#!@$% entertain''s the reason-to-be! with F!in-ess'));
-----------
-'entertain':6 'ess':15 'f':13 'power':3 'reason':9 'rule':4 'seventi':2
 ```
+| to\_tsvector |
+| --- |
+| 'entertain':6 'ess':15 'f':13 'power':3 'reason':9 'rule':4 'seventi':2 |
+
 This may prove problematic in some contexts, however we can see that the resultant vector is freed from the expansion of character-delimited terms, and this will allow us to correctly position fuzzy matches against the exact text, reduced and returned from `prepare_text_for_tsvector`.
 
 ### Function to repair treated source text
@@ -404,7 +381,7 @@ gives us:
 | --- | --- | --- | --- | --- |
 | character\-split |'charact':2 'character\-split':1 'split':3 |character\- split |'charact':1 'split':2 |character\-split |
 
-allowing us to return text to the user without internal indexing features.
+This allows us to return text to the user without internal indexing features.
 
 
 ## Revisiting Exact Matches with text prepared for indexing
@@ -431,11 +408,11 @@ SELECT ts_exact_phrase_matches(
 		TO_TSVECTOR(prepare_text_for_tsvector(content)), 
 		'two passengers would admonish him to pull up the window') 
 FROM files LIMIT 1;
-::>
- ts_exact_phrase_matches
--------------------------
- two passengers would admonish him to pull up the window,
 ```
+| ts\_exact\_phrase\_matches |
+| --- |
+| spoken words had been in his life— when the weary |
+
 Great!. In fact, if we search the last phrase in chapter 3 of `A Tale pf Two Cities`, which happens to be `Gracious Creator a day! To be buried alive for eighteen years` we get precisely that back:
 ```
 SELECT ts_exact_phrase_matches(
