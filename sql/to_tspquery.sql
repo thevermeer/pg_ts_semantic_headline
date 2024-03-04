@@ -43,3 +43,20 @@ END;
 $$
 STABLE
 LANGUAGE plpgsql;
+
+CREATE OR REPLACE FUNCTION TO_TSPQUERY(query TSQUERY)
+RETURNS TSPQuery AS
+$$
+DECLARE string TEXT = regexp_replace(UNACCENT(query::TEXT), 
+	                   '''(\w+)(\W)(\w+)'' <-> ''(\w+)'' <-> ''(\w+)''', 
+                       E'''\\4'' <-> ''\\5''',
+                       'g');
+BEGIN    
+	RETURN TO_TSPQUERY(regexp_replace(string, 
+	                   '''(\W)(\w+)''', 
+                       E'''\\2''',
+                       'g'));
+END;
+$$
+STABLE
+LANGUAGE plpgsql;
