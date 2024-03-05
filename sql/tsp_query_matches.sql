@@ -40,12 +40,12 @@ exception at present.
 -- Internal Helper Function, broken out for debugging
 -- Returns a filtered TSV containing ONLY the lexemes within
 CREATE OR REPLACE FUNCTION tsp_filter_tsvector_with_tsquery
-(config REGCONFIG, tsv TSVECTOR,  search_query TSQUERY)
-RETURNS TSVECTOR AS
+(config REGCONFIG, tspv TSPVECTOR, search_query TSQUERY)
+RETURNS TSPVECTOR AS
 $$    
 BEGIN
    RETURN 
-    (SELECT ts_filter(setweight(tsv, 'A', ARRAY_AGG(lexes)), '{a}')
+    (SELECT ASSERT_TSPVECTOR(ts_filter(setweight(tspv, 'A', ARRAY_AGG(lexes)), '{a}'))
      FROM (SELECT UNNEST(tsvector_to_array(vec.phrase_vector)) AS lexes
            FROM TSQUERY_TO_TSVECTOR(config, search_query) AS vec) AS query2vec);
 END;

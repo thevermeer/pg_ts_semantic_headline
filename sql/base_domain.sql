@@ -1,30 +1,20 @@
-CREATE DOMAIN TSPQuery AS TSQuery 
-NOT NULL CHECK 
-   (value::TEXT !~ '[\w+][\W+][\w]' AND UNACCENT(value::TEXT) = value::TEXT);
+-- TYPE/DOMAIN for restricting, differentiating and marshalling pre- v.
+--  post-processed TS Query and Vectors
 
+-- TYPE: TSPQuery
+-- OVERLOADS: TSQuery
+-- Enforces a query that is BOTH UNACCENTed and contains no infix characters; 
+-- \W+ will capture 
+CREATE DOMAIN TSPQuery AS TSQuery 
+NOT NULL CHECK (value::TEXT !~ '[\w+][\W+][\w]');
+
+-- Note:
+-- 1) in TO_TSPVECTOR er inject a dummy, marker node into the max lexeme 
+--    position, 16383
+-- 2) multiple lexemes can occupy position 16,383 without logically 
+--    interfering with each other
+
+-- A TSPVector 'proves' it has been pre-processed by inserting the
+-- ProcessedUnaccentedTSPIndexableText at the maximum position.
 CREATE DOMAIN TSPVector AS TSVector 
-NOT NULL CHECK 
-   (ARRAY_TO_STRING((TSVECTOR_TO_ARRAY(value)), '') !~ 
-   ('[\u24a5|\u24a4|\u000c|\u00bb|\u0002|\u02dc|' || 
-	'\u3002|\u24a6|\u003d|\u02bc|\u2033|\u0008|\u301a|\u00a9|\u2477|\u203c|' || 
-	'\u0021|\u0004|\u2212|\u2489|\u301d|\u2a75|\u249a|\u0149|\u2215|\u2480|' || 
-	'\u300b|\u2986|\u2046|\u003a|\u24a8|\u3009|\u2499|\u2493|\u007e|\u0025|' || 
-	'\u02c8|\u02c2|\u247b|\u2225|\u2026|\u001b|\u249c|\u2496|\u2011|\u247e|' || 
-	'\u20a4|\u0040|\u2047|\u2a76|\u226b|\u007d|\u24b0|\u2490|\u2486|\u249f|' || 
-	'\u00a1|\u001a|\u0012|\u2216|\u2018|\u201e|\u2483|\u005e|\u33d8|\u002d|' || 
-	'\u02d7|\u301e|\u0014|\u24ad|\u002a|\u002e|\u0007|\u0028|\u005c|\u2015|' || 
-	'\u0029|\u00ab|\u2048|\u02bb|\u24a7|\u3014|\u2482|\u0023|\u24b5|\u24ac|' || 
-	'\u201b|\u301b|\u2013|\u0009|\u002f|\u2485|\u2039|\u003c|\u24a2|\u00f7|' || 
-	'\u00b1|\u24aa|\u3015|\u2044|\u2487|\u248f|\u005b|\u20a3|\u0019|\u249e|' || 
-	'\u0011|\u001e|\u2045|\u2478|\u24b2|\u2484|\u02cb|\u000e|\u24b1|\u2494|' || 
-	'\u2476|\u02c6|\u24a9|\u02d0|\u2492|\u248d|\u001c|\u2016|\u007c|\u24af|' || 
-	'\u2012|\u0026|\u2014|\u2985|\u249d|\u003f|\u00bf|\u204e|\u02b9|\u0005|' || 
-	'\u24a0|\u2498|\u2481|\u002b|\u2479|\u2488|\u33c7|\u24b3|\u203a|\u007f|' || 
-	'\u2497|\u3019|\u24b4|\u0017|\u247d|\u001d|\u0018|\u0015|\u003e|\u007b|' || 
-	'\u0016|\u000f|\u000b|\u2024|\u247f|\u2049|\u2010|\u005f|\u3018|\u2491|' || 
-	'\u2223|\u201c|\u201a|\u226a|\u24a1|\u2032|\u2019|\u24a3|\u248b|\u0060|' || 
-	'\u3008|\u02ba|\u215f|\u003b|\u0003|\u247c|\u0022|\u0010|\u24ae|\u2475|' || 
-	'\u248a|\u201d|\u0027|\u0013|\u2a74|\u000d|\u005d|\u0024|\u3001|\u2474|' || 
-	'\u02c4|\u33c2|\u000a|\u00d7|\u249b|\u00ad|\u24ab|\u2117|\u00ae|\u300a|' || 
-	'\u02bd|\u02d6|\u002c|\u201f|\u248e|\u248c|\u02c3|\u001f|\u0006|\u2495|' || 
-	'\u247a]'));
+NOT NULL CHECK (value @@ 'ProcessedUnaccentedTSPIndexableText'::TSQUERY);
