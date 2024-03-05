@@ -18,7 +18,7 @@ This project is in development February/April of 2024. Before we have a stable r
 
 1) Clone this repository.
 
-2) `cd` into the project directory `(/postgresql_semantic_tsheadline) 
+2) `cd` into the project directory `/postgresql_semantic_tsheadline`
 
 3) Run `make && make install` :
 - `make` - will compile the source files in the `/sql` folder into a single .sql file as the extention.
@@ -57,13 +57,16 @@ CREATE INDEX my_content_index_content_tsv_gin_idx ON files USING GIN (content_ts
 ```
 With those 2 columns in place, we can now query the table and deliver headlines with highlights much faster, by using:
 ```
-TS_FAST_HEADLINE ([config REGCONFIG,] content TEXT, user_search TSPQUERY [, options TEXT])
+TS_FAST_HEADLINE ([config REGCONFIG,] content_arr TEXT[], content_tspv TSPVECTOR, user_search TSPQUERY [, options TEXT])
 ```
 As an example, we can now produce fast headlines like so:
 ```
 SELECT TS_FAST_HEADLINE('english', content_arr, content_tsv, TO_TSPQUERY('user<->phrase & search | term')) FROM my_content_index; 
 ```
 The `options` argument can be used to fine-tune tradeoffs in performance v. accuracy.
+
+#### Note: TS_FAST_HEADLINE uses the pre-processed TSPVector and TSPQuery types
+See below, in the usage section for more information on how to form pre-preprocessed queries and vectors for using `TS_FAST_HEADLINE` and `TSP_QUERY_MATCHES`
 
 ## Purpose
 The original purpose of this repository is to document some issues encountered with using PostgreSQL full-text search to display highlighted search results to the user, and propose a solution that is expressed firstly as PGSQL user-defined functions (UDFs). The goal of creating this functionality is to demonstrate the value to the PostgreSQL community of correcting the ts_headline function to better reflect the actual semantics of the full-text search operators used for index lookup. 
@@ -208,10 +211,9 @@ Finally, if we are realizing the TSVector and TEXT[] array to a lookup table, we
 ```
 CREATE OR REPLACE FUNCTION trg_update_content_tsv_and_arr()
 RETURNS TRIGGER AS $$
-DECLARE clean_text TEXT = = TSP_INDEXABLE_TEXT(NEW.content);
 BEGIN
-    NEW.content_tsv       := to_tsvector(clean_text);   
-    NEW.content_arr       := regexp_split_to_array(clean_textt, '[\s]+');
+    NEW.content_tsv := TO_TSPVECTOR(NEW.content);   
+    NEW.content_arr := TO_TSP_TEXT_ARRAY (NEW.content, '[\s]+');
     RETURN NEW;
 END;
 $$ LANGUAGE plpgsql;
@@ -256,13 +258,34 @@ PHRASETO_TSQUERY('seek-ing find.ing the needle in-fix');
 
 
 ### Highlighting Search Results
-To present search results it is ideal to show a part of each document and how it is related to the query. Usually, search engines show fragments of the document with marked search terms. PostgreSQL provides a function `ts_headline` that implements this functionality, however the built-in `ts_headline` function does not respect the semantics of phrase operators in TSQueries, and it is very computationally expensive.
+To present search results, it is ideal to show a part of each document and how it is related to the query. Usually, search engines show fragments of the document with marked search terms. PostgreSQL provides a function `ts_headline` that implements this functionality, however the built-in `ts_headline` function does not respect the semantics of phrase operators in TSQueries, and it is very computationally expensive.
 
 In order to correct these two pressing issues, this extension offers two (2) separate approaches to replacing `ts_headline` with `TS_SEMANTIC_HEADLINE` OR `ts_fast_headline`:
 ```
-TS_SEMANTIC_HEADLINE([ config regconfig, ] document text, query tsquery [, options text ]) returns text
+TS_SEMANTIC_HEADLINE([ config REGCONFIG, ] document TEXT, query TSQUERY [, options TEXT ]) returns TEXT
 ```
 `ts_semantic_headline` accepts a document along with a query, and returns an excerpt from the document in which terms from the query are highlighted. Specifically, the function will use the query to select relevant text fragments, and then highlight the phrases that match the subconditions of the query. Where `ts_headline` will highlight terms even if those word positions do not match the query's restrictions, `TS_SEMANTIC_HEADLINE` will highlight the multi-word phrase patterns, in the form that they are matching in search. The configuration to be used to parse the document can be specified by config; if config is omitted, the default_text_search_config configuration is used.
+
+For example
+```
+SELECT TS_SEMANTIC_HEADLINE
+       ('english',
+         
+        'The most common type of search is to find all documents containing given query-terms 
+         and return them in order of their similarity to the query.',
+        
+        TO_TSPQUERY('english', 'query-terms & similarity<3>query'));
+```
+| tsp\_semantic\_headline |
+| --- |
+| \<b\>query\-terms\</b\>and return them in order of their \<b\>similarity to the query\</b\> |
+
+```
+TS_FAST_HEADLINE([ config REGCONFIG, ] content_arr TEXT[], content_tspv TSPVECTOR, query TSPQUERY [, options TEXT ]) returns TEXT
+```
+`ts_fast_headline` accepts a pre-computed, positionally parsable `content_arr` TEXT[] array and a valid TSPVECTOR. Given a `content` TEXT string of the original document content, the assumptions are:
+- `content_arr` is pre-computed from `TO_TSP_TEXT_ARRAY(content)`
+- `content_tspv` is pre-computed from `TO_TSPVECTOR(content)`
 
 The options, as implemented, do not match 1:1 with the same options for `ts_headline`, and the differences should be noted below. If an options string is specified it must consist of a comma-separated list of one or more option=value pairs. The available options are:
 
@@ -283,26 +306,6 @@ These option names are recognized case-insensitively. You must double-quote stri
 In non-fragment-based headline generation, ts_headline (and thus ts_semanticheadline) locates matches for the given query and chooses a single one to display, preferring matches that have more query words within the allowed headline length. In fragment-based headline generation, ts_headline locates the query matches and splits each match into “fragments” of no more than MaxWords words each, preferring fragments with more query words, and when possible “stretching” fragments to include surrounding words. The fragment-based mode is thus more useful when the query matches span large sections of the document, or when it's desirable to display multiple matches. 
 
 #### TODO:
-Currently: In either mode, if no query matches can be identified, we return NULL, however, this will do weird things with JOINs and as a result, we should really return text as per the ts_headline spec: 
+1) Impelemnt `HighlightAll` 
+2) Currently: In either mode, if no query matches can be identified, we return NULL, however, this will do weird things with JOINs and as a result, we should really return text as per the ts_headline spec: 
 > In either mode, if no query matches can be identified, then a single fragment of the first MinWords words in the document will be displayed.
-
-For example
-```
-SELECT TS_SEMANTIC_HEADLINE('english'::REGCONFIG,
-  'The most common type of search
-is to find all documents containing given query-terms
-and return them in order of their similarity to the query.',
-  TO_TSPQUERY('english', 'query-terms & similarity<3>query'));
-```
-| tsp\_semantic\_headline |
-| --- |
-| \<b\>query\-terms\</b\>and return them in order of their \<b\>similarity to the query\</b\> |
-
-```
-'Search terms may occur
-many times in a document,
-requiring ranking of the search matches to decide which
-occurrences to display in the result.',
-  to_tsquery('english', 'search & term'),
-  'MaxFragments=10, MaxWords=7, MinWords=3, StartSel=<<, StopSel=>>');
-```
