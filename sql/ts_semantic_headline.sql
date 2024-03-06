@@ -68,6 +68,7 @@ BEGIN
                                      'MaxFragments=30,MinWords=64,MaxWords=64' || options),
                     headline);
 END;
+$$
 STABLE
 LANGUAGE plpgsql;
 
