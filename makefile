@@ -6,12 +6,17 @@ DIRECTORY = /sql
 EXTENSION_NAME = tsp_semantic_headline
 VERSION = 1.0
 SCHEMA = public
-
+DB_NAME = default_database
+DB_USER = default_user
 PG_CONFIG = pg_config
 PGXS := $(shell $(PG_CONFIG) --pgxs)
 include $(PGXS)
 
-.PHONY: all compile_sql
+.PHONY: all compile_sql test
+
+test: 
+	psql -U $(DB_USER) -d $(DB_NAME) -f ./test/english_lang_test.sql
+	psql -U $(DB_USER) -d $(DB_NAME) -f ./test/german_lang_test.sql
 
 all: compile_sql
 
