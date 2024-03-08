@@ -100,6 +100,10 @@ BEGIN
 	result_string := regexp_replace(result_string, 
 	                                '(['|| space_making_chars ||']+)', 
 	                                E'\\1\u0001 ', 'g');
+ 	
+ 	result_string := regexp_replace(result_string, '(\s[^[:alnum:]|\s]+)\s(\w+)', E'\\1\\2', 'g');
+ 	
+ 	
  	-- removes all non-word token sequences
  	result_string := regexp_replace(result_string, '(\s)([^\w|\s]+)(\s)', E' ', 'g');
 	-- removes redundant spaces
