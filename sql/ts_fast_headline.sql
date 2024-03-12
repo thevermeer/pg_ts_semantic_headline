@@ -49,6 +49,17 @@ Options:
 
 -- Arity-5 Form of fast TS_FAST_HEADLINE with pre-computed arr & tsv
 
+CREATE OR REPLACE FUNCTION SLICE_ARRAY 
+(whole_array TEXT[], start_pos BIGINT, end_pos BIGINT)
+RETURNS text[] AS
+$$
+BEGIN
+    RETURN (whole_array)[start_pos:end_pos];
+END;
+$$
+STABLE
+LANGUAGE plpgsql;
+
 CREATE OR REPLACE FUNCTION TS_FAST_HEADLINE_COVER_DENSITY 
 (config REGCONFIG, haystack_arr TEXT[], content_tsv TSPVECTOR, search_query TSPQUERY, options TEXT DEFAULT '')
 RETURNS TABLE(headline TEXT, density INTEGER) AS
