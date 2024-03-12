@@ -49,9 +49,9 @@ Options:
 
 -- Arity-5 Form of fast TS_FAST_HEADLINE with pre-computed arr & tsv
 
-CREATE OR REPLACE FUNCTION TS_FAST_HEADLINE 
+CREATE OR REPLACE FUNCTION TS_FAST_HEADLINE_COVER_DENSITY 
 (config REGCONFIG, haystack_arr TEXT[], content_tsv TSPVECTOR, search_query TSPQUERY, options TEXT DEFAULT '')
-RETURNS TEXT AS
+RETURNS TABLE(headline TEXT, density INTEGER) AS
 $$
 DECLARE
     -- Parse Options string to JSON map --
@@ -68,11 +68,8 @@ DECLARE
     max_offset    INTEGER = max_words / 2 + 1;
     max_fragments INTEGER = COALESCE((opts->>'MaxFragments')::INTEGER, 1);
 BEGIN
-    RETURN (
-		SELECT TSP_PRESENT_TEXT(STRING_AGG(highlighted_text,
-		                                   COALESCE(opts->>'FragmentDelimiter', '...')),
-		                        COALESCE(opts->>'StopSel', '</b>'))
-		FROM (SELECT REGEXP_REPLACE(-- Aggregate the source text over a Range
+    RETURN QUERY (
+		 SELECT REGEXP_REPLACE(-- Aggregate the source text over a Range
 		                            ' ' || 
 									ARRAY_TO_STRING(haystack_arr[MIN(start_pos) - GREATEST((max_offset - (MAX(end_pos) - MIN(start_pos) / 2 + 1)), min_words): 
 		                                                         MAX(end_pos)   + GREATEST((max_offset - (MAX(end_pos) - MIN(start_pos) / 2 + 1)), min_words)], 
@@ -81,7 +78,8 @@ BEGIN
 				                    E' (' || STRING_AGG(REGEXP_REPLACE(words, '([\.\+\*\?\^\$\(\)\[\]\{\}\|\\])', '\\\1', 'g'), '|') || ') ', 
 				                    -- Replace with Tags wrapping Content
 				                    ' ' || tag_range || ' ', 
-				                    'g') AS highlighted_text
+				                    'g') AS highlighted_text,
+				     COUNT(*)::INTEGER AS match_count
 		      FROM TSP_QUERY_MATCHES (config, 
 			                          haystack_arr, 
 									  content_tsv, 
@@ -90,11 +88,35 @@ BEGIN
 									  COALESCE(opts->>'DisableSematics', 'FALSE')::BOOLEAN)
 			  GROUP BY (start_pos / (max_words + 1)) * (max_words + 1)
 			  ORDER BY COUNT(*) DESC, (start_pos / (max_words + 1)) * (max_words + 1)
-			  LIMIT max_fragments) AS frags);
+			  LIMIT max_fragments);
 END;
 $$
 STABLE
 LANGUAGE plpgsql;
+
+
+
+CREATE OR REPLACE FUNCTION TS_FAST_HEADLINE 
+(config REGCONFIG, haystack_arr TEXT[], content_tsv TSPVECTOR, search_query TSPQUERY, options TEXT DEFAULT '')
+RETURNS TEXT AS
+$$
+DECLARE
+    -- Parse Options string to JSON map --
+    opts          JSON    = (SELECT JSON_OBJECT_AGG(grp[1], COALESCE(grp[2], grp[3])) AS opt 
+                             FROM REGEXP_MATCHES(options, 
+                                                 '(\w+)=(?:"([^"]+)"|((?:(?![\s,]+\w+=).)+))', 
+                                                 'g') as matches(grp));
+BEGIN
+    RETURN (
+		SELECT TSP_PRESENT_TEXT(STRING_AGG(headline,
+		                                   COALESCE(opts->>'FragmentDelimiter', '...')),
+		                        COALESCE(opts->>'StopSel', '</b>'))
+		FROM TS_FAST_HEADLINE_COVER_DENSITY(config, haystack_arr, content_tsv, search_query, options));
+END;
+$$
+STABLE
+LANGUAGE plpgsql;
+
 
 -- OVERLOAD Arity-5 form, to infer the default_text_search_config for parsing
 -- Arity-4 Form of fast TS_FAST_HEADLINE with pre-computed arr & tsv
