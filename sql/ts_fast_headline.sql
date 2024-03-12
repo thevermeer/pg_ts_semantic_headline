@@ -48,6 +48,7 @@ Options:
 */
 
 -- Arity-5 Form of fast TS_FAST_HEADLINE with pre-computed arr & tsv
+
 CREATE OR REPLACE FUNCTION TS_FAST_HEADLINE 
 (config REGCONFIG, haystack_arr TEXT[], content_tsv TSPVECTOR, search_query TSPQUERY, options TEXT DEFAULT '')
 RETURNS TEXT AS
@@ -77,7 +78,7 @@ BEGIN
 		                                                         MAX(end_pos)   + GREATEST((max_offset - (MAX(end_pos) - MIN(start_pos) / 2 + 1)), min_words)], 
 		                                                   ' ') || ' ', 
 				                    -- Capture Exact Matches over Range
-				                    E' (' || STRING_AGG(words, '|') || ') ', 
+				                    E' (' || STRING_AGG(REGEXP_REPLACE(words, '([\.\+\*\?\^\$\(\)\[\]\{\}\|\\])', '\\\1', 'g'), '|') || ') ', 
 				                    -- Replace with Tags wrapping Content
 				                    ' ' || tag_range || ' ', 
 				                    'g') AS highlighted_text
