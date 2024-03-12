@@ -99,14 +99,18 @@ BEGIN
 	-- by inserting a bell character + space after the character, forcing separate
 	-- tokenization of deliniated terms
 	result_string := regexp_replace(result_string, 
-	                                '(['|| space_making_chars ||']+)', 
+	                                '(['|| space_making_chars ||']+)\s', 
+	                                E'\\1\u0001 ', 'g');
+	
+	result_string := regexp_replace(result_string, 
+	                                '(['|| space_making_chars ||'|\u0001]+)', 
 	                                E'\\1\u0001 ', 'g');
  	
  	result_string := regexp_replace(result_string, '(\s)(['|| space_making_chars ||']+) ', E'\\1\\2', 'g');
  	
  	
  	-- removes all non-word token sequences
- 	result_string := regexp_replace(result_string, '\s(['|| space_making_chars ||']+\u0001)', ' ', 'g');
+ 	result_string := regexp_replace(result_string, '\s(['|| space_making_chars ||']+\u0001+)', ' ', 'g');
 	-- removes redundant spaces
  	result_string := regexp_replace(result_string, '[\s]+', ' ', 'g');
 	-- Trim the result and return the string
@@ -115,3 +119,4 @@ END;
 $$
 STABLE
 LANGUAGE plpgsql;
+
