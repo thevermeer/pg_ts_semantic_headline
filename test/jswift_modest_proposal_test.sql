@@ -381,7 +381,24 @@ my wife past child-bearing.
         
         IS(ts_semantic_headline('english', content, PHRASETO_TSQUERY('english', 'power')), 
         '<b>power,</b> and whereby we can incur no danger indisobliging England. For this kind of commodity', 
-        'Modest Proposal Test: Power via semantic_headline')
+        'Modest Proposal Test: Power via semantic_headline'),
+
+        -- SIMPLE PARSER TESTS
+        IS(ts_semantic_headline('simple', content, PHRASETO_TSQUERY('simple', 'power')), 
+        '<b>power,</b> and whereby we can incur no danger indisobliging England. For this kind of commodity', 
+        'Modest Proposal Test: Power via semantic_headline'),
+
+        IS(TS_FAST_HEADLINE('simple', TO_TSP_TEXT_ARRAY(content), TO_TSPVECTOR('simple', content), PHRASETO_TSPQUERY('simple', 'POWER')), 
+        'real, of no expence and littletrouble, full in our own <b>power,</b> and whereby we can incur no danger indisobliging England. For', 
+        'Modest Proposal Test: Power`'),
+
+        IS(TS_FAST_HEADLINE('simple', TO_TSP_TEXT_ARRAY(content), TO_TSPVECTOR('simple', content), PHRASETO_TSPQUERY('simple', 'child-bearing')), 
+        'penny; the youngest being nine years old, andmy wife past <b>child-bearing.</b>', 
+        'Modest Proposal Test: child-bearing`'), 
+
+        IS(TS_FAST_HEADLINE('simple', TO_TSP_TEXT_ARRAY(content), TO_TSPVECTOR('simple', content), PHRASETO_TSPQUERY('simple', 'fortune, through the kingdom')), 
+        'old, be offered in sale to the persons ofquality and <b>fortune, through the kingdom,</b> always advising the mother tolet them suck plentifully in the', 
+        'Modest Proposal Test: fortune, through the kingdom`')
 
         ]) AS ts_semantic_headline_assertions
 

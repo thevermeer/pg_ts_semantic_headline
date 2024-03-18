@@ -58,9 +58,8 @@ DECLARE headline TEXT = ts_headline(config,
                                     user_search, 
                                     options || ',StartSel="",StopSel="",FragmentDelimiter=XDUMMYFRAGMENTX,');
 BEGIN
-    user_search := TO_TSPQUERY(user_search);
+    user_search := TO_TSPQUERY(config, user_search);
     headline := regexp_replace(' ' || headline || ' ', 'XDUMMYFRAGMENTX', ' ... ', 'g');
-    --headline := regexp_replace(headline, '\r|\n', ' ', 'g');
     IF (OPTIONS <> '') THEN options := ',' || options; END IF;
     RETURN COALESCE(TS_FAST_HEADLINE(config,
                                      TO_TSP_TEXT_ARRAY(headline), 

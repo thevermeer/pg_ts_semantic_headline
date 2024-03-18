@@ -38,13 +38,13 @@ RETURNS TSPQuery AS
 $$
 BEGIN    
     RETURN TO_TSPQUERY(current_setting('default_text_search_config')::REGCONFIG, 
-	                   query_string);
+	                     query_string);
 END;
 $$
 STABLE
 LANGUAGE plpgsql;
 
-CREATE OR REPLACE FUNCTION TO_TSPQUERY(query TSQUERY)
+CREATE OR REPLACE FUNCTION TO_TSPQUERY(config REGCONFIG, query TSQUERY)
 RETURNS TSPQuery AS
 $$
 DECLARE string TEXT = regexp_replace(UNACCENT(query::TEXT), 
@@ -52,10 +52,24 @@ DECLARE string TEXT = regexp_replace(UNACCENT(query::TEXT),
                        E'''\\4'' <-> ''\\5''',
                        'g');
 BEGIN    
-	RETURN TO_TSPQUERY(regexp_replace(string, 
+	RETURN TO_TSPQUERY(config, 
+                     regexp_replace(string, 
 	                   '''(\W)(\w+)''', 
                        E'''\\2''',
                        'g'));
+END;
+$$
+STABLE
+LANGUAGE plpgsql;
+
+
+CREATE OR REPLACE FUNCTION TO_TSPQUERY(query TSQUERY)
+RETURNS TSPQuery AS
+$$
+
+BEGIN    
+	RETURN TO_TSPQUERY(current_setting('default_text_search_config')::REGCONFIG,
+                     query::TSQUERY);
 END;
 $$
 STABLE
