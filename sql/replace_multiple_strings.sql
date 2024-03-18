@@ -21,7 +21,6 @@ BEGIN
     LOOP
         source_text := replace(source_text, find_array[i], replace_array[i]);
     END LOOP;
-
     RETURN source_text;
 END;
 $$

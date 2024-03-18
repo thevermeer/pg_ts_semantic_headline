@@ -18,7 +18,7 @@ CREATE OR REPLACE FUNCTION PHRASETO_TSPQUERY(config REGCONFIG, query_string TEXT
 RETURNS TSPQUERY AS
 $$
 BEGIN
-	RETURN PHRASETO_TSQUERY(config, TSP_INDEXABLE_TEXT(UNACCENT(query_string)))::TSPQuery;
+    RETURN PHRASETO_TSQUERY(config, TSP_INDEXABLE_TEXT(UNACCENT(query_string)))::TSPQuery;
 END;
 $$
 STABLE
@@ -30,7 +30,7 @@ RETURNS TSPQUERY AS
 $$
 BEGIN    
     RETURN PHRASETO_TSPQUERY(current_setting('default_text_search_config')::REGCONFIG, 
-	                         query_string);
+                             query_string);
 END;
 $$
 STABLE

@@ -55,15 +55,15 @@ RETURNS TEXT AS
 $$
 DECLARE headline TEXT = ts_headline(config, 
                                     content, 
-							               user_search, 
-								            options || ',StartSel="",StopSel="",FragmentDelimiter=XDUMMYFRAGMENTX,');
+                                    user_search, 
+                                    options || ',StartSel="",StopSel="",FragmentDelimiter=XDUMMYFRAGMENTX,');
 BEGIN
     user_search := TO_TSPQUERY(user_search);
     headline := regexp_replace(' ' || headline || ' ', 'XDUMMYFRAGMENTX', ' ... ', 'g');
     headline := regexp_replace(headline, '\r', ' ', 'g');
     IF (OPTIONS <> '') THEN options := ',' || options; END IF;
     RETURN COALESCE(TS_FAST_HEADLINE(config,
-	                                  TO_TSP_TEXT_ARRAY(headline), 
+                                     TO_TSP_TEXT_ARRAY(headline), 
                                      TO_TSPVECTOR(config, headline), 
                                      user_search,
                                      options || ',MaxFragments=30,MinWords=64,MaxWords=64' ),
@@ -80,10 +80,10 @@ CREATE OR REPLACE FUNCTION TS_SEMANTIC_HEADLINE
 RETURNS TEXT AS
 $$
 BEGIN
-	RETURN TS_SEMANTIC_HEADLINE(current_setting('default_text_search_config')::REGCONFIG, 
-	                            content, 
-								       user_search, 
-								       options);
+   RETURN TS_SEMANTIC_HEADLINE(current_setting('default_text_search_config')::REGCONFIG, 
+                               content, 
+                               user_search, 
+                               options);
 END;
 $$
 STABLE

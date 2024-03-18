@@ -37,9 +37,9 @@ CREATE OR REPLACE FUNCTION TSQUERY_TO_TABLE(input_query TSQUERY)
 RETURNS TABLE(phrase_vector TSVECTOR, phrase_query TSQUERY, lexeme TEXT, pos SMALLINT) AS
 $$
 BEGIN
-	RETURN QUERY 
-	(SELECT * FROM TSQUERY_TO_TABLE(current_setting('default_text_search_config')::REGCONFIG, 
-                                       input_query));
+  RETURN QUERY 
+  (SELECT * FROM TSQUERY_TO_TABLE(current_setting('default_text_search_config')::REGCONFIG, 
+                                  input_query));
 END;
 $$
 STABLE

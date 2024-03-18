@@ -15,9 +15,9 @@ CREATE OR REPLACE FUNCTION TSVECTOR_TO_TABLE(input_vector TSVECTOR)
 RETURNS TABLE(lex TEXT, pos SMALLINT) AS
 $$
 BEGIN
-	RETURN QUERY (SELECT lexeme, UNNEST(positions) AS position 
-		          FROM UNNEST(input_vector)  
-		          ORDER BY position);
+  RETURN QUERY (SELECT lexeme, UNNEST(positions) AS position 
+                FROM UNNEST(input_vector)  
+                ORDER BY position);
 END;
 $$
 STABLE
