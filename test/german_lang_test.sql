@@ -126,7 +126,27 @@ BEGIN;
         
         IS(ts_semantic_headline('german', content, PHRASETO_TSQUERY('german', 'Hochzeitsgeschenk')), 
         '<b>Hochzeitsgeschenk</b> selbstverständlich ein paar Seezungen gestiftet hatte doch daran, einen Mund voll Wasser durch', 
-        'German Test 5; Seeking: Hochzeitsgeschenk`')
+        'German Test 5; Seeking: Hochzeitsgeschenk`'),
+
+        IS(ts_semantic_headline('simple', content, PHRASETO_TSQUERY('simple', 'Dzünschten ihm ungeniert alles Üble')), 
+        '<b>Dzünschten ihm ungeniert alles Üble.</b> der witzenheimer zur Seite gewahrte man vierzehn- bis sechzehnjährige Mädchen', 
+        'German Test 6: Seeking `Dzünschten ihm ungeniert alles Üble` against the simple parser'), 
+        
+        IS(ts_semantic_headline('simple', content, PHRASETO_TSQUERY('simple', 'Schutzdache des Wagenschuppens aufgestellt')), 
+        '<b>Schutzdache des Wagenschuppens aufgestellt.</b> Es prangten darauf vier Lendenbraten, sechs Schüsseln mit Hühnerfrikassee, eine Platte', 
+        'German Test 7: Seeking `Schutzdache des Wagenschuppens aufgestellt` against the simple parser'),
+
+        IS(ts_semantic_headline('simple', content, PHRASETO_TSQUERY('simple', 'bleibenden Gäste zecht')), 
+        'Alles ward wieder ruhig. Die Köpfe versanken in den Heften, und der Neuling verharrte zwei', 
+        'German Test 8; Seeking: bleibenden Gäste zecht` against the simple parser'),
+
+        IS(ts_semantic_headline('simple', content, PHRASETO_TSQUERY('simple', 'Kutschen, Landauern, Einspännern')), 
+        '<b>Kutschen, Landauern, Einspännern,</b> Gigs, Kremsern mit Ledervorhängen, in allerlei Fuhrwerk moderner und vorsintflutlicher Art. Das junge', 
+        'German Test 9; Seeking: Kutschen, Landauern, Einspännern` against the simple parser'),
+        
+        IS(ts_semantic_headline('simple', content, PHRASETO_TSQUERY('simple', 'Hochzeitsgeschenk')), 
+        '<b>Hochzeitsgeschenk</b> selbstverständlich ein paar Seezungen gestiftet hatte doch daran, einen Mund voll Wasser durch', 
+        'German Test 10; Seeking: Hochzeitsgeschenk` against the simple parser')
 
         ]) AS ts_semantic_headline_assertions
 

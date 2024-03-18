@@ -368,36 +368,36 @@ my wife past child-bearing.
     SELECT 
         UNNEST(ARRAY[
         IS(TS_FAST_HEADLINE('english', TO_TSP_TEXT_ARRAY(content), TO_TSPVECTOR(content), PHRASETO_TSPQUERY('english', 'POWER')), 
-        'real, of no expence and littletrouble, full in our own <b>power,</b> and whereby we can incur no danger indisobliging England. For', 
+        'of no expence and little trouble, full in our own <b>power,</b> and whereby we can incur no danger in disobliging England.', 
         'Modest Proposal Test: Power`'),
 
         IS(TS_FAST_HEADLINE('english', TO_TSP_TEXT_ARRAY(content), TO_TSPVECTOR(content), PHRASETO_TSPQUERY('english', 'child-bearing')), 
-        'penny; the youngest being nine years old, andmy wife past <b>child-bearing.</b>', 
+        'the youngest being nine years old, and my wife past <b>child-bearing.</b>', 
         'Modest Proposal Test: child-bearing`'), 
 
         IS(TS_FAST_HEADLINE('english', TO_TSP_TEXT_ARRAY(content), TO_TSPVECTOR(content), PHRASETO_TSPQUERY('english', 'fortune, through the kingdom')), 
-        'old, be offered in sale to the persons ofquality and <b>fortune, through the kingdom,</b> always advising the mother tolet them suck plentifully in the', 
+        'be offered in sale to the persons of quality and <b>fortune, through the kingdom,</b> always advising the mother to let them suck plentifully in', 
         'Modest Proposal Test: fortune, through the kingdom`'), 
         
         IS(ts_semantic_headline('english', content, PHRASETO_TSQUERY('english', 'power')), 
-        '<b>power,</b> and whereby we can incur no danger indisobliging England. For this kind of commodity', 
+        '<b>power,</b> and whereby we can incur no danger in disobliging England. For this kind of commodity', 
         'Modest Proposal Test: Power via semantic_headline'),
 
         -- SIMPLE PARSER TESTS
         IS(ts_semantic_headline('simple', content, PHRASETO_TSQUERY('simple', 'power')), 
-        '<b>power,</b> and whereby we can incur no danger indisobliging England. For this kind of commodity', 
+        '<b>power,</b> and whereby we can incur no danger in disobliging England. For this kind of commodity', 
         'Modest Proposal Test: Power via semantic_headline'),
 
         IS(TS_FAST_HEADLINE('simple', TO_TSP_TEXT_ARRAY(content), TO_TSPVECTOR('simple', content), PHRASETO_TSPQUERY('simple', 'POWER')), 
-        'real, of no expence and littletrouble, full in our own <b>power,</b> and whereby we can incur no danger indisobliging England. For', 
+        'of no expence and little trouble, full in our own <b>power,</b> and whereby we can incur no danger in disobliging England.', 
         'Modest Proposal Test: Power`'),
 
         IS(TS_FAST_HEADLINE('simple', TO_TSP_TEXT_ARRAY(content), TO_TSPVECTOR('simple', content), PHRASETO_TSPQUERY('simple', 'child-bearing')), 
-        'penny; the youngest being nine years old, andmy wife past <b>child-bearing.</b>', 
+        'the youngest being nine years old, and my wife past <b>child-bearing.</b>', 
         'Modest Proposal Test: child-bearing`'), 
 
         IS(TS_FAST_HEADLINE('simple', TO_TSP_TEXT_ARRAY(content), TO_TSPVECTOR('simple', content), PHRASETO_TSPQUERY('simple', 'fortune, through the kingdom')), 
-        'old, be offered in sale to the persons ofquality and <b>fortune, through the kingdom,</b> always advising the mother tolet them suck plentifully in the', 
+        'be offered in sale to the persons of quality and <b>fortune, through the kingdom,</b> always advising the mother to let them suck plentifully in', 
         'Modest Proposal Test: fortune, through the kingdom`')
 
         ]) AS ts_semantic_headline_assertions

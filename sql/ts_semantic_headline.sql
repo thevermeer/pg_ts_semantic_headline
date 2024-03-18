@@ -65,8 +65,8 @@ BEGIN
                                      TO_TSP_TEXT_ARRAY(headline), 
                                      TO_TSPVECTOR(config, headline), 
                                      user_search,
-                                     options || ',MaxFragments=30,MinWords=64,MaxWords=64' ),
-                    headline);
+                                     options || 'MaxFragments=30,MinWords=64,MaxWords=64' ),
+                    TRIM(headline));
 END;
 $$
 STABLE

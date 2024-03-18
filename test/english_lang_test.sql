@@ -50,7 +50,49 @@ SELECT
         
         IS(ts_semantic_headline(content, PHRASETO_TSQUERY('time')), 
         '<b>times,</b> it was the worst of <b>times,</b> it was the age of wisdom, it was the age of foolishness', 
-        'English Test 5; Seeking: Time`')
+        'English Test 5; Seeking: Time`'),
+
+        -- FAST HEADLINE
+        IS(ts_fast_headline(TO_TSP_TEXT_ARRAY(content), TO_TSPVECTOR(content), TO_TSQUERY('best<2>time|worst<2>time')), 
+        'It was the <b>best of times,</b> it was the <b>worst of times,</b> it was the age of wisdom, it was the age',        
+        'English Test 6: Seeking Query: best<2>time|worst<2>time'), 
+        
+        IS(ts_semantic_headline(content, PHRASETO_TSQUERY('decide negatively')), 
+        '<b>decided negative,</b> made a decided scramble for it, and the three other horses followed suit', 
+        'English Test 7: Seeking Phrase `decide negatively`'),
+
+        IS(ts_semantic_headline(content, PHRASETO_TSQUERY('hurried adjuration, he cocked his blunderbuss')), 
+        '<b>hurried adjuration, he cocked his blunderbuss,</b> and stood on the offensive. The stillness consequent on the cessation', 
+        'English Test 8; Seeking Phrase: hurried adjuration, he cocked his blunderbuss`'),
+
+        IS(ts_semantic_headline(content, PHRASETO_TSQUERY('gallop came fast and furiously up the hill')), 
+        'expectati The sound of a horse at a <b>gallop came fast and furiously up the hill.</b>', 
+        'English Test 9; Seeking: horse at a gallop`'),
+        
+        IS(ts_semantic_headline(content, PHRASETO_TSQUERY('time')), 
+        '<b>times,</b> it was the worst of <b>times,</b> it was the age of wisdom, it was the age of foolishness', 
+        'English Test 10; Seeking: Time`'),
+
+        -- Simple Parsing
+        IS(ts_semantic_headline(content, TO_TSQUERY('best<2>time|worst<2>time')), 
+        '<b>best of times,</b> it was the <b>worst of times,</b> it was the age of wisdom',        
+        'English Test 11: Seeking Query: best<2>time|worst<2>time'), 
+        
+        IS(ts_semantic_headline(content, PHRASETO_TSQUERY('decide negatively')), 
+        '<b>decided negative,</b> made a decided scramble for it, and the three other horses followed suit', 
+        'English Test 12: Seeking Phrase `decide negatively`'),
+
+        IS(ts_semantic_headline(content, PHRASETO_TSQUERY('hurried adjuration, he cocked his blunderbuss')), 
+        '<b>hurried adjuration, he cocked his blunderbuss,</b> and stood on the offensive. The stillness consequent on the cessation', 
+        'English Test 13; Seeking Phrase: hurried adjuration, he cocked his blunderbuss`'),
+
+        IS(ts_semantic_headline(content, PHRASETO_TSQUERY('gallop came fast and furiously up the hill')), 
+        'expectati The sound of a horse at a <b>gallop came fast and furiously up the hill.</b>', 
+        'English Test 14; Seeking: horse at a gallop`'),
+        
+        IS(ts_semantic_headline(content, PHRASETO_TSQUERY('time')), 
+        '<b>times,</b> it was the worst of <b>times,</b> it was the age of wisdom, it was the age of foolishness', 
+        'English Test 15; Seeking: Time`')
 
         ]) AS ts_semantic_headline_assertions
 
