@@ -17,6 +17,7 @@ include $(PGXS)
 test: 
 	psql -U $(DB_USER) -d $(DB_NAME) -f ./test/english_lang_test.sql
 	psql -U $(DB_USER) -d $(DB_NAME) -f ./test/german_lang_test.sql
+	psql -U $(DB_USER) -d $(DB_NAME) -f ./test/jswift_modest_proposal_test.sql
 
 all: compile_sql
 

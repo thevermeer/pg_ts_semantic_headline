@@ -33,15 +33,15 @@ The sound of a horse at a gallop came fast and furiously up the hill.');
 SELECT
         UNNEST(ARRAY[
         IS(ts_semantic_headline(content, TO_TSQUERY('best<2>time|worst<2>time')), 
-        '<b>best of times,</b>it was the <b>worst of times,</b>it was the age of wisdom',        
+        '<b>best of times,</b> it was the <b>worst of times,</b> it was the age of wisdom',        
         'English Test 1: Seeking Query: best<2>time|worst<2>time'), 
         
         IS(ts_semantic_headline(content, PHRASETO_TSQUERY('decide negatively')), 
-        '<b>decided negative,</b>made a decided scramble for it,and the three other horses followed suit', 
+        '<b>decided negative,</b> made a decided scramble for it, and the three other horses followed suit', 
         'English Test 2: Seeking Phrase `decide negatively`'),
 
         IS(ts_semantic_headline(content, PHRASETO_TSQUERY('hurried adjuration, he cocked his blunderbuss')), 
-        '<b>hurried adjuration,he cocked his blunderbuss,</b>and stood on the offensive. The stillness consequent on the cessation', 
+        '<b>hurried adjuration, he cocked his blunderbuss,</b> and stood on the offensive. The stillness consequent on the cessation', 
         'English Test 3; Seeking Phrase: hurried adjuration, he cocked his blunderbuss`'),
 
         IS(ts_semantic_headline(content, PHRASETO_TSQUERY('gallop came fast and furiously up the hill')), 
@@ -49,8 +49,8 @@ SELECT
         'English Test 4; Seeking: horse at a gallop`'),
         
         IS(ts_semantic_headline(content, PHRASETO_TSQUERY('time')), 
-        '<b>times,</b>it was the worst of <b>times,</b>it was the age of wisdom,it was the age of foolishness', 
-        'English Test 5; Seeking: Hochzeitsgeschenk`')
+        '<b>times,</b> it was the worst of <b>times,</b> it was the age of wisdom, it was the age of foolishness', 
+        'English Test 5; Seeking: Time`')
 
         ]) AS ts_semantic_headline_assertions
 

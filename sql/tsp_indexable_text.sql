@@ -94,6 +94,7 @@ DECLARE
 	'\u02bd|\u02d6|\u002c|\u201f|\u248e|\u248c|\u02c3|\u001f|\u0006|\u2495|' || 
 	'\u247a';
 BEGIN
+result_string := regexp_replace(result_string, '\n|\r', '', 'g');
 result_string := regexp_replace(result_string, '^\W+', '', 'g');
 -- Any word-breaking character is treated, in its raw (NOT UNACCENTED) form,
 -- by inserting a bell character + space after the character, forcing separate

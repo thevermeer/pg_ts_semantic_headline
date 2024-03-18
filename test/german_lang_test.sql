@@ -109,23 +109,23 @@ BEGIN;
     SELECT 
         UNNEST(ARRAY[
         IS(ts_semantic_headline('german', content, PHRASETO_TSQUERY('german', 'Dzünschten ihm ungeniert alles Üble')), 
-        '<b>Dzünschten ihm ungeniert alles Üble.</b>der witzenheimer zur Seite gewahrte man vierzehn-bis sechzehnjährige Mädchen', 
+        '<b>Dzünschten ihm ungeniert alles Üble.</b> der witzenheimer zur Seite gewahrte man vierzehn- bis sechzehnjährige Mädchen', 
         'German Test 1: Seeking `Dzünschten ihm ungeniert alles Üble`'), 
         
         IS(ts_semantic_headline('german', content, PHRASETO_TSQUERY('german', 'Schutzdache des Wagenschuppens aufgestellt')), 
-        '<b>Schutzdache des Wagenschuppens aufgestellt.</b>Es prangten darauf vier Lendenbraten,sechs Schüsseln mit Hühnerfrikassee,eine Platte', 
+        '<b>Schutzdache des Wagenschuppens aufgestellt.</b> Es prangten darauf vier Lendenbraten, sechs Schüsseln mit Hühnerfrikassee, eine Platte', 
         'German Test 2: Seeking `Schutzdache des Wagenschuppens aufgestellt`'),
 
         IS(ts_semantic_headline('german', content, PHRASETO_TSQUERY('german', 'bleibenden Gäste zecht')), 
-        '<b>bleibenden Gäste zechten</b> am Küchentische bis zum frühen Morgen weiter,während die Kinder unter den Bänken', 
+        '<b>bleibenden Gäste zechten</b> am Küchentische bis zum frühen Morgen weiter, während die Kinder unter den Bänken', 
         'German Test 3; Seeking: bleibenden Gäste zecht`'),
 
         IS(ts_semantic_headline('german', content, PHRASETO_TSQUERY('german', 'Kutschen, Landauern, Einspännern')), 
-        '<b>Kutschen,Landauern,Einspännern,</b>Gigs,Kremsern mit Ledervorhängen,in allerlei Fuhrwerk moderner und vorsintflutlicher Art.Das junge', 
+        '<b>Kutschen, Landauern, Einspännern,</b> Gigs, Kremsern mit Ledervorhängen, in allerlei Fuhrwerk moderner und vorsintflutlicher Art. Das junge', 
         'German Test 4; Seeking: Kutschen, Landauern, Einspännern`'),
         
         IS(ts_semantic_headline('german', content, PHRASETO_TSQUERY('german', 'Hochzeitsgeschenk')), 
-        '<b>Hochzeitsgeschenk</b> selbstverständlich ein paar Seezungen gestiftet hatte doch daran,einen Mund voll Wasser durch', 
+        '<b>Hochzeitsgeschenk</b> selbstverständlich ein paar Seezungen gestiftet hatte doch daran, einen Mund voll Wasser durch', 
         'German Test 5; Seeking: Hochzeitsgeschenk`')
 
         ]) AS ts_semantic_headline_assertions
