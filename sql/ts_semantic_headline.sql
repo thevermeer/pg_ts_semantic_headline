@@ -60,7 +60,7 @@ DECLARE headline TEXT = ts_headline(config,
 BEGIN
     user_search := TO_TSPQUERY(config, user_search);
     headline := regexp_replace(' ' || headline || ' ', 'XDUMMYFRAGMENTX', ' ... ', 'g');
-    IF (OPTIONS <> '') THEN options := ',' || options; END IF;
+    IF NOT(options = '') THEN options := options || ','; END IF;
     RETURN COALESCE(TS_FAST_HEADLINE(config,
                                      TO_TSP_TEXT_ARRAY(headline), 
                                      TO_TSPVECTOR(config, headline), 
